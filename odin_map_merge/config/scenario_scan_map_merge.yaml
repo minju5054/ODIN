@@ -1,0 +1,21 @@
+scenario_scan_map_merge:
+  ros__parameters:
+    use_sim_time: true
+    global_frame: map
+    output_topic: /merged_map
+    publish_rate_hz: 2.0
+    resolution: 0.05
+    origin_x: -10.0
+    origin_y: -10.0
+    width_m: 20.0
+    height_m: 20.0
+    free_value: 0
+    occupied_value: 100
+    unknown_value: -1
+    max_range: 3.5
+    scan_decimation: 2
+    robot_clear_radius: 0.42
+    dynamic_obstacle_filter_radius: 0.55
+    robot_names:
+      - robot_1
+      - robot_2

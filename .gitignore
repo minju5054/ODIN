@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ROS/colcon local outputs
+build/
+install/
+log/
+
+# Gazebo / ROS runtime
+*.log
+.ros/
+
+# Editor
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*~

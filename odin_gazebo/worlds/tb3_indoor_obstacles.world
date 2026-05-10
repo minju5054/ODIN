@@ -1,0 +1,63 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="tb3_indoor_obstacles">
+    <plugin name="gazebo_ros_init" filename="libgazebo_ros_init.so"/>
+    <plugin name="gazebo_ros_factory" filename="libgazebo_ros_factory.so"/>
+
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <model name="wall_north">
+      <static>true</static>
+      <pose>0 4 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>8 0.12 1</size></box></geometry></collision><visual name="v"><geometry><box><size>8 0.12 1</size></box></geometry></visual></link>
+    </model>
+
+    <model name="wall_south">
+      <static>true</static>
+      <pose>0 -4 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>8 0.12 1</size></box></geometry></collision><visual name="v"><geometry><box><size>8 0.12 1</size></box></geometry></visual></link>
+    </model>
+
+    <model name="wall_east">
+      <static>true</static>
+      <pose>4 0 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>0.12 8 1</size></box></geometry></collision><visual name="v"><geometry><box><size>0.12 8 1</size></box></geometry></visual></link>
+    </model>
+
+    <model name="wall_west">
+      <static>true</static>
+      <pose>-4 0 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>0.12 8 1</size></box></geometry></collision><visual name="v"><geometry><box><size>0.12 8 1</size></box></geometry></visual></link>
+    </model>
+
+    <model name="box_1">
+      <static>true</static>
+      <pose>-1.8 1.2 0.4 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>0.8 0.8 0.8</size></box></geometry></collision><visual name="v"><geometry><box><size>0.8 0.8 0.8</size></box></geometry></visual></link>
+    </model>
+
+    <model name="box_2">
+      <static>true</static>
+      <pose>1.8 -1.0 0.4 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>0.8 1.0 0.8</size></box></geometry></collision><visual name="v"><geometry><box><size>0.8 1.0 0.8</size></box></geometry></visual></link>
+    </model>
+
+    <model name="pillar_1">
+      <static>true</static>
+      <pose>0.2 2.2 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><cylinder><radius>0.35</radius><length>1.0</length></cylinder></geometry></collision><visual name="v"><geometry><cylinder><radius>0.35</radius><length>1.0</length></cylinder></geometry></visual></link>
+    </model>
+
+    <model name="inner_wall">
+      <static>true</static>
+      <pose>0 -2.0 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>3.0 0.12 1</size></box></geometry></collision><visual name="v"><geometry><box><size>3.0 0.12 1</size></box></geometry></visual></link>
+    </model>
+  </world>
+</sdf>

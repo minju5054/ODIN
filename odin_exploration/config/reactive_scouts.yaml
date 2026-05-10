@@ -1,0 +1,41 @@
+reactive_scout_robot_1:
+  ros__parameters:
+    use_sim_time: true
+    forward_speed: 0.28
+    slow_speed: 0.11
+    max_turn_speed: 0.90
+    stop_distance: 0.34
+    free_distance: 0.55
+    slow_distance: 0.90
+    field_of_view_deg: 170.0
+    front_angle_deg: 18.0
+    target_smoothing: 0.35
+    preferred_turn_direction: 1.0
+    backup_speed: -0.04
+    escape_duration: 1.4
+    backup_duration: 0.35
+    turn_commit_duration: 0.9
+    explore_bias_speed: 0.12
+    explore_bias_period: 12.0
+    side_clearance_weight: 0.45
+
+reactive_scout_robot_2:
+  ros__parameters:
+    use_sim_time: true
+    forward_speed: 0.28
+    slow_speed: 0.11
+    max_turn_speed: 0.90
+    stop_distance: 0.34
+    free_distance: 0.55
+    slow_distance: 0.90
+    field_of_view_deg: 170.0
+    front_angle_deg: 18.0
+    target_smoothing: 0.35
+    preferred_turn_direction: -1.0
+    backup_speed: -0.04
+    escape_duration: 1.4
+    backup_duration: 0.35
+    turn_commit_duration: 0.9
+    explore_bias_speed: 0.12
+    explore_bias_period: 12.0
+    side_clearance_weight: 0.45

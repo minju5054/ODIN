@@ -1,0 +1,231 @@
+# Project Rules: ODIN-RESCUE
+
+These rules apply to the ODIN-RESCUE project in addition to the global rules in `/home/odin/.codex/AGENTS.md`.
+
+## Project Context
+
+ODIN-RESCUE is a ROS 2 Humble and Gazebo Classic 11 based multi-robot rescue simulation project.
+
+The core goal is to build an on-device AI based multi-robot rescue system that can grow from a single desktop simulation into a distributed Jetson-based deployment.
+
+Development environment:
+
+- OS: Ubuntu 22.04
+- ROS: ROS 2 Humble
+- Python: Python 3.10
+- Simulator: Gazebo Classic 11
+- Workspace root: `/home/odin/robotics_ws/ros2_ws`
+- Project path: `/home/odin/robotics_ws/ros2_ws/src/odin_rescue`
+
+## Architecture Principles
+
+Design for a distributed ROS 2 system from the beginning.
+
+- Do not assume all nodes run on one machine.
+- Do not rely on shared memory between robots or nodes.
+- Do not hardcode `localhost` as a system assumption.
+- Do not rely on absolute machine-specific paths.
+- Avoid monolithic scripts that combine unrelated responsibilities.
+- Communicate through ROS 2 topics, services, actions, parameters, and launch files.
+- Each robot stack must be able to run independently under its own namespace.
+
+Target deployment model:
+
+- Jetson 1: `robot_1` scout stack
+- Jetson 2: `robot_2` scout stack
+- Jetson 3: `robot_3` rescue stack
+- Jetson 4: optional Qwen / LLM / VLM node
+- Jetson 5: optional monitoring / backup AI node
+- Desktop/Laptop: Gazebo, RViz, visualization, and development
+
+## Robot Roles
+
+The baseline system has three robots.
+
+- `robot_1`: scout robot A
+- `robot_2`: scout robot B
+- `robot_3`: rescue robot C
+
+`robot_1` and `robot_2` perform exploration and SLAM.
+
+`robot_3` is the rescue robot. It waits in the safe zone and must not move until dispatched by the coordinator. `robot_3` does not perform SLAM during the initial system design. It uses its known safe-zone spawn pose and later navigates to a validated rescue goal only after a victim event and coordinator command.
+
+All three robots have known fixed spawn poses inside the simulation world:
+
+- `robot_1` knows its initial spawn pose.
+- `robot_2` knows its initial spawn pose.
+- `robot_3` spawns in a safe corner of the map and knows its initial spawn pose.
+
+Use this known-pose assumption to keep the first multi-robot SLAM and map merge implementation simple. Do not start with unknown-initial-pose map merging unless explicitly requested.
+
+## Current Priority
+
+The current priority is stable multi-robot structure, not SLAM quality or AI integration.
+
+Use a simple custom flat rescue arena as the initial simulation world. The default world should be a flat floor surrounded by walls with a few internal temporary walls, not a full building mesh or apartment-style STL environment.
+
+The original `destruction_scenarios/house_easier.world` asset may be kept as a reference, but it is not the default map because it is a building mesh rather than the desired flat wall arena.
+
+Default world:
+
+- `odin_gazebo/worlds/rescue_walls_easy.world`
+
+Implement in this order unless the user explicitly changes the priority:
+
+1. Minimal ROS 2 package structure
+2. Successful `colcon build`
+3. Spawn `robot_1`, `robot_2`, and `robot_3` in Gazebo
+4. Separate robot namespaces
+5. Verify per-robot topics
+6. Move each robot individually through `cmd_vel` or teleop
+7. Single and multi-robot SLAM for `robot_1` and `robot_2`
+8. Map sharing or map merge
+9. ArUco based victim detection
+10. Coordinator node
+11. `robot_3` rescue dispatch
+12. Optional Qwen / LLM / VLM integration
+
+Do not jump to AI, VLM, LLM, advanced navigation, or complex coordination before the basic three-robot namespace and topic structure works.
+
+## Package Boundaries
+
+Prefer role-based ROS 2 packages. Each package should have one clear responsibility.
+
+Expected package split:
+
+- `odin_bringup`: top-level launch and system composition
+- `odin_description`: robot URDF/Xacro, meshes, robot model assets
+- `odin_gazebo`: Gazebo worlds, spawn logic, simulation plugins
+- `odin_slam`: SLAM configuration and SLAM launch integration
+- `odin_map_merge`: known-pose occupancy grid merging from scout robot maps
+- `odin_exploration`: simple scout motion or exploration goal generation for `robot_1` and `robot_2`
+- `odin_detection`: ArUco victim detection and victim event publishing
+- `odin_coordinator`: victim event handling, validation, dispatch decisions
+- `odin_navigation`: navigation, goal execution, Nav2 integration
+- `odin_ai`: optional AI waypoint recommendation or ranking
+
+Do not put all functionality into one script or one package for convenience.
+
+## ROS Naming And Namespaces
+
+Use explicit namespace-based topic naming.
+
+Expected topic examples:
+
+- `/robot_1/scan`
+- `/robot_1/odom`
+- `/robot_1/cmd_vel`
+- `/robot_1/map`
+- `/robot_2/scan`
+- `/robot_2/odom`
+- `/robot_2/cmd_vel`
+- `/robot_2/map`
+- `/robot_3/scan`
+- `/robot_3/odom`
+- `/robot_3/cmd_vel`
+- `/robot_3/goal_pose`
+- `/victim_events`
+- `/merged_map`
+- `/coordinator/status`
+
+When adding nodes or launch files:
+
+- Use namespaces explicitly.
+- Avoid hidden remaps that make topic ownership unclear.
+- Keep frame names and topic names readable.
+- Prefer launch arguments for robot name, namespace, pose, and world configuration.
+
+## Victim Detection
+
+Victim detection uses ArUco markers as a surrogate for real human detection.
+
+- Use ArUco marker ID `0` as the victim surrogate.
+- Do not introduce YOLO, RGB-D human detection, or heavyweight perception dependencies unless explicitly requested.
+- The goal is to implement the multi-robot event-driven rescue flow, not high-accuracy perception.
+
+## Coordinator Rules
+
+The coordinator is the system mediator.
+
+The coordinator receives victim events, checks robot and map context, validates candidate goals, and dispatches `robot_3`.
+
+AI modules may recommend waypoints or rank victim candidates, but they must not directly control robots. Any AI-produced waypoint must be validated by the coordinator before use.
+
+Coordinator validation must include:
+
+- `frame_id`
+- `x`, `y`, and `yaw` validity
+- coordinate bounds
+- duplicate victim event detection
+- `robot_3` availability
+- map accessibility
+
+If a command, waypoint, event, or state is unsafe or ambiguous, the coordinator must reject it in a fail-safe way.
+
+## Coding Rules
+
+Write maintainable research-grade code, not disposable demos.
+
+- Make small, focused changes.
+- Implement the minimum working feature first.
+- Keep launch-based workflows repeatable.
+- Use explicit topic names and namespaces.
+- Keep node structure readable.
+- Use ROS loggers instead of bare `print` for ROS nodes.
+- Avoid monolithic scripts.
+- Avoid hardcoded paths.
+- Avoid unrelated file rewrites.
+- Minimize heavy dependencies.
+- Prefer parameters and config files over runtime constants when values may change between robots or machines.
+
+## Build And Verification
+
+Run commands from the workspace root unless there is a specific reason not to.
+
+Build:
+
+```bash
+cd /home/odin/robotics_ws/ros2_ws
+colcon build --packages-select odin_rescue
+```
+
+When the project is split into multiple packages, build the relevant package or packages explicitly:
+
+```bash
+cd /home/odin/robotics_ws/ros2_ws
+colcon build --packages-select <package_name>
+```
+
+Test:
+
+```bash
+cd /home/odin/robotics_ws/ros2_ws
+colcon test --packages-select <package_name>
+colcon test-result --verbose
+```
+
+Minimum verification should match the current milestone:
+
+- Package structure exists and builds.
+- Gazebo launches without crashing.
+- All three robots spawn.
+- All three robots spawn at their configured known poses.
+- Robot namespaces are separated.
+- Per-robot topics are visible.
+- Each robot can be moved independently.
+- SLAM and map topics are visible when that milestone is reached.
+- `robot_3` does not run SLAM in the initial architecture.
+- Victim events are published when ArUco detection is implemented.
+- Coordinator dispatches `robot_3` only after validation.
+
+If a verification step cannot be run, state the reason clearly.
+
+## Safety And Scope
+
+Treat motion, navigation, dispatch, and actuator-like behavior conservatively.
+
+- Do not move `robot_3` unless the coordinator dispatch path requires it.
+- Do not bypass coordinator validation for convenience.
+- Do not make AI modules authoritative over robot motion.
+- Prefer simulation or dry-run validation before assuming real robot behavior.
+- Keep the project aligned with distributed multi-robot ROS architecture before adding advanced AI.

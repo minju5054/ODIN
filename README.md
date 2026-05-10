@@ -1,69 +1,215 @@
-# ODIN-RESCUE 
-**On-device Detection and Inference for Navigation in Disaster Rescue**
+# ODIN-RESCUE
 
-ODIN-RESCUE는 **ROS2 Humble**과 **Gazebo** 환경을 활용한 재난 구조 시뮬레이션 시스템입니다. 두 대의 정찰 로봇이 자율 주행 및 SLAM을 통해 지도를 제작하고, 시각 언어 모델(Qwen-VL)이 구조 로봇의 최적 구조 목표점을 결정하는 지능형 협업 아키텍처를 가집니다.
+ODIN-RESCUE is a ROS 2 Humble + Gazebo Classic 11 multi-robot rescue simulation.
 
----
+The current milestone focuses on two scout robots that explore a known 20 m x 20 m rescue arena, run per-robot SLAM, and publish a shared `/merged_map` from robot odometry and laser scans. The design keeps robot topics separated by namespace so the system can later be split across Jetson devices.
 
-##  System Architecture
-본 시스템은 정찰(Scouting), 통합 및 판단(Coordination), 그리고 구조(Rescue)의 3단계 프로세스로 운영됩니다.
+## Environment
 
-### 1. 정찰 로봇 (Scout Robots: `robot_1`, `robot_2`)
-* **자율 탐색**: 미리 정의된 Waypoint 경로를 순찰하며, LiDAR 기반 Safety Rule을 통해 장애물을 회피합니다.
-* **SLAM & 탐지**: LiDAR SLAM으로 지도를 생성하고, RGB 카메라로 ArUco Marker(ID 0, 구조 대상자)를 탐지합니다.
-* **이벤트 발행**: 대상자 발견 시 해당 위치 정보가 포함된 `victim_event`를 JSON 형식으로 발행합니다.
+- Ubuntu 22.04
+- ROS 2 Humble
+- Gazebo Classic 11
+- Python 3.10
+- TurtleBot3 Gazebo packages
 
-### 2. 통합 제어기 (Coordinator)
-* **지도 병합**: 정찰 로봇들이 각자 생성한 개별 지도를 `merged_map`으로 통합합니다.
-* **데이터 시각화**: 통합된 지도를 PNG 이미지로 변환하고, 로봇 위치와 후보 Waypoint를 표시하여 Qwen-VL에게 전달합니다.
-* **안전 검증**: Qwen이 선택한 Waypoint가 실제 이동 가능한 공간(Free Space)인지, 충분한 안전 거리(Clearance)를 확보했는지 검증합니다.
+Workspace layout:
 
-### 3. 구조 로봇 (Rescue Responder: `robot_3`)
-* **대기 및 출동**: 안전 구역(Safe Zone)에서 대기하다가 , Coordinator가 검증한 목표 Pose를 수신하면 출동합니다.
-* **경로 계획**: **Nav2**를 사용하여 목적지까지의 충돌 없는 최적 경로를 계획하고 주행합니다.
-
----
-
-## 🎨 Map Visualization & Rules
-Coordinator는 Qwen 모델의 판단을 돕기 위해 다음과 같은 색상 규칙으로 지도 이미지를 생성합니다:
-
-| 항목 | 색상/기호 | 설명 |
-| :--- | :--- | :--- |
-| **이동 가능 공간** | White | 로봇이 다닐 수 있는 Free Space  |
-| **장애물** | Black | 벽이나 물체 등 점유된 공간  |
-| **미탐사 영역** | Gray | 아직 지도가 그려지지 않은 구간  |
-| **구조 로봇** | Blue Circle | `robot_3`의 현재 위치  |
-| **구조 대상자** | Red Circle | 발견된 ArUco Marker의 위치  |
-| **후보 지점** | Green Number | Qwen이 선택할 수 있는 후보 Waypoint 목록  |
-
----
-
-## 🛠️ Environment & Tech Stack
-* **OS**: Ubuntu 22.04 LTS 
-* **ROS**: ROS2 Humble 
-* **Simulator**: Gazebo Classic, RViz2 
-* **Robot**: TurtleBot3 (Scout x2, Rescue x1)
-* **Key Tools**: OpenCV (ArUco Detection), Nav2 (Path Planning)
-
----
-
-## 📂 Package Structure
-본 프로젝트는 다음과 같은 Python 노드들로 구성됩니다:
-
-* `scout_patrol_node.py`: 정찰 로봇의 자율 주행 및 안전 로직 제어.
-* `simple_map_merge_node.py`: 다중 로봇 지도를 하나로 통합.
-* `aruco_victim_detector_node.py`: RGB 카메라 기반 구조 대상자 인식.
-* `coordinator_node.py`: 지도 이미지 생성, Qwen 인터페이스, Waypoint 검증 총괄.
-* `qwen_prompt_builder.py`: 시각 지능 모델(Qwen-VL)을 위한 프롬프트 생성.
-
----
-
-## 🚀 How to Run
-
-### 1. Workspace 설정
 ```bash
-mkdir -p ~/odin_ws/src
-cd ~/odin_ws/src
-# 본 레포지토리 클론
-colcon build --symlink-install
+/home/odin/robotics_ws/ros2_ws
+└── src
+    └── odin_rescue
+```
+
+## Packages
+
+### `odin_bringup`
+
+Top-level launch package.
+
+- `sim_multi_slam_map_merge.launch.py`: launches Gazebo, two robot SLAM nodes, the scan-based merged map node, and delayed scout motion.
+- `multi_slam_map_merge.launch.py`: launches only SLAM and map merge.
+
+### `odin_gazebo`
+
+Gazebo worlds and robot spawning.
+
+- `house_easier_three_robots.launch.py`: currently spawns `robot_1` and `robot_2`.
+- `worlds/odin_rescue_20x20.world`: default map A.
+- `worlds/odin_rescue_20x20_b.world`: alternate asymmetric map B kept for testing.
+
+Current scout spawn poses:
+
+- `robot_1`: `x=-7.5`, `y=7.5`, `yaw=-1.5708`
+- `robot_2`: `x=7.5`, `y=-7.5`, `yaw=1.5708`
+
+### `odin_slam`
+
+Per-robot `slam_toolbox` integration.
+
+- `multi_slam.launch.py`: starts one `async_slam_toolbox_node` for each scout namespace.
+- `config/slam_toolbox.yaml`: SLAM parameters tuned for quick 2D simulation mapping.
+
+Published map topics:
+
+- `/robot_1/map`
+- `/robot_2/map`
+
+### `odin_map_merge`
+
+Scan-based merged map generation.
+
+Current fixed implementation:
+
+- `scenario_scan_map_merge.py`
+- `scenario_scan_map_merge.launch.py`
+- `config/scenario_scan_map_merge.yaml`
+
+This node subscribes to:
+
+- `/robot_1/odom`
+- `/robot_1/scan`
+- `/robot_2/odom`
+- `/robot_2/scan`
+
+It publishes:
+
+- `/merged_map`
+
+The merged map is built directly in a known 20 m x 20 m global occupancy grid. It also filters robot-on-robot detections so scout robots do not remain as obstacles in the merged map.
+
+### `odin_exploration`
+
+Simple autonomous scout motion for SLAM coverage.
+
+- `reactive_scout.py`: reactive gap-following controller with escape behavior and center-spiral bias.
+- `reactive_scouts.launch.py`: starts one scout controller in each robot namespace.
+
+Current behavior:
+
+- `robot_1` starts from the upper-left area and initially drives downward.
+- `robot_2` starts from the lower-right area and initially drives upward.
+- Both robots bias toward the center while keeping obstacle avoidance active.
+
+### Other Reference Packages
+
+The repository still contains reference packages such as `multirobot_map_merge`, `explore_lite`, `explore_lite_msgs`, and `odin_navigation`. They are not part of the current default bringup path.
+
+Earlier map merge experiments are archived outside this project at:
+
+```bash
+/home/odin/robotics_ws/ros2_ws/odin_rescue_map_merge_archive
+```
+
+## Main Nodes And Functions
+
+### `ScenarioScanMapMerge`
+
+File:
+
+```bash
+odin_map_merge/odin_map_merge/scenario_scan_map_merge.py
+```
+
+Important methods:
+
+- `_odom_callback`: stores each robot pose from `/robot_i/odom`.
+- `_scan_callback`: projects each laser scan into the global occupancy grid.
+- `_is_other_robot_hit`: skips occupied hits near the other robot position.
+- `_clear_robot_footprints`: clears each robot's current footprint from `/merged_map`.
+- `_raytrace_free`: marks free cells along each laser ray.
+- `_publish_map`: publishes the final `/merged_map`.
+
+### `ReactiveScout`
+
+File:
+
+```bash
+odin_exploration/odin_exploration/reactive_scout.py
+```
+
+Important methods:
+
+- `_scan_callback`: extracts front, left, right, and gap information from `/scan`.
+- `_control_loop`: publishes `/cmd_vel` based on obstacle clearance and target direction.
+- `_best_gap_angle`: chooses the safest open scan direction.
+- `_enter_escape`: backs up and turns when the robot is too close to an obstacle.
+- `_apply_center_spiral_bias`: nudges the robot toward a center-focused spiral scan pattern.
+- `_odom_callback`: stores odometry for the center-spiral bias.
+
+## Build
+
+From the workspace root:
+
+```bash
+cd /home/odin/robotics_ws/ros2_ws
+colcon build --packages-select \
+  odin_gazebo \
+  odin_slam \
+  odin_map_merge \
+  odin_exploration \
+  odin_bringup
 source install/setup.bash
+```
+
+## Run
+
+Full simulation:
+
+```bash
+cd /home/odin/robotics_ws/ros2_ws
+source install/setup.bash
+ros2 launch odin_bringup sim_multi_slam_map_merge.launch.py
+```
+
+Headless simulation:
+
+```bash
+ros2 launch odin_bringup sim_multi_slam_map_merge.launch.py gui:=false
+```
+
+SLAM + merged map only:
+
+```bash
+ros2 launch odin_bringup multi_slam_map_merge.launch.py
+```
+
+Gazebo only:
+
+```bash
+ros2 launch odin_gazebo house_easier_three_robots.launch.py
+```
+
+Use alternate map B:
+
+```bash
+ros2 launch odin_bringup sim_multi_slam_map_merge.launch.py \
+  world:=/home/odin/robotics_ws/ros2_ws/install/odin_gazebo/share/odin_gazebo/worlds/odin_rescue_20x20_b.world
+```
+
+## RViz Checks
+
+Useful topics:
+
+```bash
+ros2 topic list | grep -E 'robot_1|robot_2|merged_map'
+ros2 topic echo /merged_map --once --field info
+```
+
+Recommended RViz fixed frame:
+
+```text
+map
+```
+
+Map displays:
+
+- `/merged_map`
+- `/robot_1/map`
+- `/robot_2/map`
+
+## Notes
+
+- `robot_3` is intentionally not spawned in the current SLAM milestone.
+- The current merged map is scan-based and assumes known global map bounds.
+- Per-robot SLAM maps may still contain dynamic robot artifacts, but `/merged_map` filters robot footprints and robot-on-robot scan hits.
+- Victim detection, coordinator dispatch, robot_3 rescue behavior, and AI integration are planned later milestones.
