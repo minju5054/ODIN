@@ -1,0 +1,14 @@
+material ODIN/ArucoMarker0
+{
+  technique
+  {
+    pass
+    {
+      lighting off
+      texture_unit
+      {
+        texture aruco_0.png
+      }
+    }
+  }
+}

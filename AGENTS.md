@@ -1,12 +1,12 @@
-# Project Rules: ODIN-RESCUE
+# Project Rules: ODIN
 
-These rules apply to the ODIN-RESCUE project in addition to the global rules in `/home/odin/.codex/AGENTS.md`.
+These rules apply to the ODIN project in addition to the global rules in `/home/odin/.codex/AGENTS.md`.
 
 ## Project Context
 
-ODIN-RESCUE is a ROS 2 Humble and Gazebo Classic 11 based multi-robot rescue simulation project.
+ODIN is a ROS 2 Humble and Gazebo Classic 11 based multi-robot tactical hostage rescue simulation project.
 
-The core goal is to build an on-device AI based multi-robot rescue system that can grow from a single desktop simulation into a distributed Jetson-based deployment.
+The core goal is to build an on-device AI based multi-robot tactical rescue system that can grow from a single desktop simulation into a distributed Jetson-based deployment.
 
 Development environment:
 
@@ -33,7 +33,7 @@ Target deployment model:
 
 - Jetson 1: `robot_1` scout stack
 - Jetson 2: `robot_2` scout stack
-- Jetson 3: `robot_3` rescue stack
+- Jetson 3: `robot_3` hostage rescue stack
 - Jetson 4: optional Qwen / LLM / VLM node
 - Jetson 5: optional monitoring / backup AI node
 - Desktop/Laptop: Gazebo, RViz, visualization, and development
@@ -44,11 +44,11 @@ The baseline system has three robots.
 
 - `robot_1`: scout robot A
 - `robot_2`: scout robot B
-- `robot_3`: rescue robot C
+- `robot_3`: hostage rescue robot C
 
 `robot_1` and `robot_2` perform exploration and SLAM.
 
-`robot_3` is the rescue robot. It waits in the safe zone and must not move until dispatched by the coordinator. `robot_3` does not perform SLAM during the initial system design. It uses its known safe-zone spawn pose and later navigates to a validated rescue goal only after a victim event and coordinator command.
+`robot_3` is the hostage rescue robot. It waits at the safe insertion point and must not move until dispatched by the coordinator. `robot_3` does not perform SLAM during the initial system design. It uses its known spawn pose and later navigates to a validated rescue goal only after a hostage event and coordinator command.
 
 All three robots have known fixed spawn poses inside the simulation world:
 
@@ -62,27 +62,27 @@ Use this known-pose assumption to keep the first multi-robot SLAM and map merge 
 
 The current priority is stable multi-robot structure, not SLAM quality or AI integration.
 
-Use a simple custom flat rescue arena as the initial simulation world. The default world should be a flat floor surrounded by walls with a few internal temporary walls, not a full building mesh or apartment-style STL environment.
+Use the custom flat tactical arena as the initial simulation world. The default world is a flat 20 m x 20 m map with walls, obstacles, a right-top enemy stronghold area, and an ArUco ID `0` hostage surrogate marker.
 
-The original `destruction_scenarios/house_easier.world` asset may be kept as a reference, but it is not the default map because it is a building mesh rather than the desired flat wall arena.
+The right-top area is the enemy stronghold / red zone. Scout robots should avoid directly targeting that area and should instead search toward the central hostage candidate area.
 
 Default world:
 
-- `odin_gazebo/worlds/rescue_walls_easy.world`
+- `odin_gazebo/worlds/odin_rescue_20x20_c.world`
 
 Implement in this order unless the user explicitly changes the priority:
 
 1. Minimal ROS 2 package structure
 2. Successful `colcon build`
-3. Spawn `robot_1`, `robot_2`, and `robot_3` in Gazebo
+3. Spawn `robot_1` and `robot_2` in Gazebo
 4. Separate robot namespaces
 5. Verify per-robot topics
 6. Move each robot individually through `cmd_vel` or teleop
 7. Single and multi-robot SLAM for `robot_1` and `robot_2`
 8. Map sharing or map merge
-9. ArUco based victim detection
+9. ArUco based hostage detection
 10. Coordinator node
-11. `robot_3` rescue dispatch
+11. `robot_3` hostage rescue dispatch
 12. Optional Qwen / LLM / VLM integration
 
 Do not jump to AI, VLM, LLM, advanced navigation, or complex coordination before the basic three-robot namespace and topic structure works.
@@ -99,8 +99,8 @@ Expected package split:
 - `odin_slam`: SLAM configuration and SLAM launch integration
 - `odin_map_merge`: known-pose occupancy grid merging from scout robot maps
 - `odin_exploration`: simple scout motion or exploration goal generation for `robot_1` and `robot_2`
-- `odin_detection`: ArUco victim detection and victim event publishing
-- `odin_coordinator`: victim event handling, validation, dispatch decisions
+- `odin_detection`: ArUco hostage detection and hostage event publishing
+- `odin_coordinator`: hostage event handling, validation, dispatch decisions
 - `odin_navigation`: navigation, goal execution, Nav2 integration
 - `odin_ai`: optional AI waypoint recommendation or ranking
 
@@ -124,7 +124,7 @@ Expected topic examples:
 - `/robot_3/odom`
 - `/robot_3/cmd_vel`
 - `/robot_3/goal_pose`
-- `/victim_events`
+- `/hostage_events`
 - `/merged_map`
 - `/coordinator/status`
 
@@ -135,19 +135,19 @@ When adding nodes or launch files:
 - Keep frame names and topic names readable.
 - Prefer launch arguments for robot name, namespace, pose, and world configuration.
 
-## Victim Detection
+## Hostage Detection
 
-Victim detection uses ArUco markers as a surrogate for real human detection.
+Hostage detection uses ArUco markers as a surrogate for real human detection.
 
-- Use ArUco marker ID `0` as the victim surrogate.
+- Use ArUco marker ID `0` as the hostage surrogate.
 - Do not introduce YOLO, RGB-D human detection, or heavyweight perception dependencies unless explicitly requested.
-- The goal is to implement the multi-robot event-driven rescue flow, not high-accuracy perception.
+- The goal is to implement the multi-robot event-driven hostage rescue flow, not high-accuracy perception.
 
 ## Coordinator Rules
 
 The coordinator is the system mediator.
 
-The coordinator receives victim events, checks robot and map context, validates candidate goals, and dispatches `robot_3`.
+The coordinator receives hostage events, checks robot and map context, validates candidate goals, and dispatches `robot_3`.
 
 AI modules may recommend waypoints or rank victim candidates, but they must not directly control robots. Any AI-produced waypoint must be validated by the coordinator before use.
 
@@ -156,7 +156,7 @@ Coordinator validation must include:
 - `frame_id`
 - `x`, `y`, and `yaw` validity
 - coordinate bounds
-- duplicate victim event detection
+- duplicate hostage event detection
 - `robot_3` availability
 - map accessibility
 
@@ -220,14 +220,14 @@ Minimum verification should match the current milestone:
 
 - Package structure exists and builds.
 - Gazebo launches without crashing.
-- All three robots spawn.
-- All three robots spawn at their configured known poses.
+- `robot_1` and `robot_2` spawn for the current scout SLAM milestone.
+- `robot_1` and `robot_2` spawn at their configured known poses.
 - Robot namespaces are separated.
 - Per-robot topics are visible.
 - Each robot can be moved independently.
 - SLAM and map topics are visible when that milestone is reached.
 - `robot_3` does not run SLAM in the initial architecture.
-- Victim events are published when ArUco detection is implemented.
+- Hostage events are published when ArUco detection is implemented.
 - Coordinator dispatches `robot_3` only after validation.
 
 If a verification step cannot be run, state the reason clearly.

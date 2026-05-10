@@ -15,12 +15,27 @@ setup(
         (join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (join('share', package_name, 'worlds'), glob('worlds/*.world')),
         (join('share', package_name, 'models', 'house'), glob('models/house/*')),
+        (
+            join('share', package_name, 'models', 'aruco_marker_0'),
+            [
+                'models/aruco_marker_0/model.config',
+                'models/aruco_marker_0/model.sdf',
+            ],
+        ),
+        (
+            join('share', package_name, 'models', 'aruco_marker_0', 'materials', 'scripts'),
+            glob('models/aruco_marker_0/materials/scripts/*'),
+        ),
+        (
+            join('share', package_name, 'models', 'aruco_marker_0', 'materials', 'textures'),
+            glob('models/aruco_marker_0/materials/textures/*'),
+        ),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='odin',
     maintainer_email='odin@example.com',
-    description='Gazebo Classic worlds and multi-robot spawn launch files for ODIN-RESCUE.',
+    description='Gazebo Classic worlds and multi-robot spawn launch files for ODIN.',
     license='MIT',
     tests_require=['pytest'],
     entry_points={

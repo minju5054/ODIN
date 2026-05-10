@@ -8,6 +8,7 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     gui = LaunchConfiguration('gui')
+    world = LaunchConfiguration('world')
 
     gazebo_launch = PathJoinSubstitution([
         FindPackageShare('odin_gazebo'),
@@ -36,11 +37,21 @@ def generate_launch_description():
             default_value='true',
             description='Start Gazebo client.',
         ),
+        DeclareLaunchArgument(
+            'world',
+            default_value=PathJoinSubstitution([
+                FindPackageShare('odin_gazebo'),
+                'worlds',
+                'odin_rescue_20x20_c.world',
+            ]),
+            description='Optional Gazebo world file passed through to odin_gazebo.',
+        ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(gazebo_launch),
             launch_arguments={
                 'use_sim_time': use_sim_time,
                 'gui': gui,
+                'world': world,
             }.items(),
         ),
         IncludeLaunchDescription(
