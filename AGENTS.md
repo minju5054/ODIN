@@ -178,6 +178,18 @@ Write maintainable research-grade code, not disposable demos.
 - Minimize heavy dependencies.
 - Prefer parameters and config files over runtime constants when values may change between robots or machines.
 
+## Git And Collaboration Rules
+
+This project is collaborative. Protect the shared repository history.
+
+- Do not commit automatically after making changes.
+- Only create commits when the user explicitly asks for a commit.
+- Do not push directly to `main` unless the user explicitly asks for it.
+- Prefer feature branches for collaboration, for example `feature/<short-task-name>`.
+- Do not use force push, force-with-lease, history rewrite, or destructive git commands unless the user explicitly asks for that exact operation.
+- Before starting new work intended for GitHub, check the current branch and status.
+- Keep unrelated user changes out of commits.
+
 ## Build And Verification
 
 Run commands from the workspace root unless there is a specific reason not to.

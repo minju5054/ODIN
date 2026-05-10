@@ -99,7 +99,7 @@ def generate_launch_description():
     gazebo_ros_share = get_package_share_directory('gazebo_ros')
     turtlebot3_gazebo_share = get_package_share_directory('turtlebot3_gazebo')
     world = LaunchConfiguration('world')
-    default_world = os.path.join(odin_gazebo_share, 'worlds', 'odin_rescue_20x20.world')
+    default_world = os.path.join(odin_gazebo_share, 'worlds', 'odin_rescue_20x20_c.world')
 
     patched_sdf_paths = {
         robot['name']: _patched_turtlebot_sdf(robot['name'])
@@ -120,7 +120,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'world',
             default_value=default_world,
-            description='Gazebo world file. Use odin_rescue_20x20_b.world for map B.',
+            description='Gazebo world file. Defaults to tactical map C.',
         ),
         SetEnvironmentVariable(name='TURTLEBOT3_MODEL', value='burger'),
         SetEnvironmentVariable(
