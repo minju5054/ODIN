@@ -1,0 +1,313 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="odin_rescue_20x20_c">
+    <plugin name="gazebo_ros_init" filename="libgazebo_ros_init.so"/>
+    <plugin name="gazebo_ros_factory" filename="libgazebo_ros_factory.so"/>
+
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <model name="flat_floor">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>20.0 20.0 0.04</size>
+            </box>
+          </geometry>
+          <pose>0 0 -0.02 0 0 0</pose>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>20.0 20.0 0.04</size>
+            </box>
+          </geometry>
+          <pose>0 0 -0.02 0 0 0</pose>
+          <material>
+            <ambient>0.34 0.34 0.34 1</ambient>
+            <diffuse>0.34 0.34 0.34 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="outer_wall_north">
+      <static>true</static>
+      <pose>0 10 0.55 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>20.0 0.18 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>20.0 0.18 1.1</size></box></geometry><material><ambient>0.62 0.66 0.66 1</ambient><diffuse>0.62 0.66 0.66 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="outer_wall_south">
+      <static>true</static>
+      <pose>0 -10 0.55 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>20.0 0.18 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>20.0 0.18 1.1</size></box></geometry><material><ambient>0.62 0.66 0.66 1</ambient><diffuse>0.62 0.66 0.66 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="outer_wall_east">
+      <static>true</static>
+      <pose>10 0 0.55 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.18 20.0 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.18 20.0 1.1</size></box></geometry><material><ambient>0.62 0.66 0.66 1</ambient><diffuse>0.62 0.66 0.66 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="outer_wall_west">
+      <static>true</static>
+      <pose>-10 0 0.55 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.18 20.0 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.18 20.0 1.1</size></box></geometry><material><ambient>0.62 0.66 0.66 1</ambient><diffuse>0.62 0.66 0.66 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="north_short_wall">
+      <static>true</static>
+      <pose>-3.4 5.2 0.55 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>4.2 0.16 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>4.2 0.16 1.1</size></box></geometry><material><ambient>0.44 0.54 0.58 1</ambient><diffuse>0.44 0.54 0.58 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="east_short_wall">
+      <static>true</static>
+      <pose>5.7 1.6 0.55 0 0 1.5708</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>3.4 0.16 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>3.4 0.16 1.1</size></box></geometry><material><ambient>0.44 0.54 0.58 1</ambient><diffuse>0.44 0.54 0.58 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="south_short_wall">
+      <static>true</static>
+      <pose>2.8 -5.4 0.55 0 0 -0.12</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>4.8 0.16 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>4.8 0.16 1.1</size></box></geometry><material><ambient>0.44 0.54 0.58 1</ambient><diffuse>0.44 0.54 0.58 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="central_landmark_l_vertical">
+      <static>true</static>
+      <pose>-1.2 1.2 0.55 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.18 3.0 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.18 3.0 1.1</size></box></geometry><material><ambient>0.56 0.50 0.42 1</ambient><diffuse>0.56 0.50 0.42 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="central_landmark_l_horizontal">
+      <static>true</static>
+      <pose>0.25 -0.2 0.55 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>3.1 0.18 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>3.1 0.18 1.1</size></box></geometry><material><ambient>0.56 0.50 0.42 1</ambient><diffuse>0.56 0.50 0.42 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="east_landmark_t_vertical">
+      <static>true</static>
+      <pose>3.8 -2.6 0.55 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.16 2.3 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.16 2.3 1.1</size></box></geometry><material><ambient>0.50 0.46 0.40 1</ambient><diffuse>0.50 0.46 0.40 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="east_landmark_t_horizontal">
+      <static>true</static>
+      <pose>3.8 -1.45 0.55 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>2.2 0.16 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>2.2 0.16 1.1</size></box></geometry><material><ambient>0.50 0.46 0.40 1</ambient><diffuse>0.50 0.46 0.40 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="diagonal_debris_marker">
+      <static>true</static>
+      <pose>-3.2 -2.8 0.45 0 0 0.55</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>3.0 0.18 0.9</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>3.0 0.18 0.9</size></box></geometry><material><ambient>0.48 0.40 0.34 1</ambient><diffuse>0.48 0.40 0.34 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="column_west_small">
+      <static>true</static>
+      <pose>-5.8 1.8 0.55 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><cylinder><radius>0.32</radius><length>1.1</length></cylinder></geometry></collision>
+        <visual name="visual"><geometry><cylinder><radius>0.32</radius><length>1.1</length></cylinder></geometry><material><ambient>0.50 0.50 0.48 1</ambient><diffuse>0.50 0.50 0.48 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="column_northeast_large">
+      <static>true</static>
+      <pose>4.7 5.0 0.55 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><cylinder><radius>0.58</radius><length>1.1</length></cylinder></geometry></collision>
+        <visual name="visual"><geometry><cylinder><radius>0.58</radius><length>1.1</length></cylinder></geometry><material><ambient>0.50 0.50 0.48 1</ambient><diffuse>0.50 0.50 0.48 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="debris_box_southwest">
+      <static>true</static>
+      <pose>-6.0 -6.2 0.35 0 0 -0.45</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>1.3 0.8 0.7</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>1.3 0.8 0.7</size></box></geometry><material><ambient>0.45 0.38 0.32 1</ambient><diffuse>0.45 0.38 0.32 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="enemy_red_zone_floor">
+      <static>true</static>
+      <pose>7.35 7.35 0.011 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><box><size>4.9 4.9 0.01</size></box></geometry>
+          <material>
+            <ambient>0.55 0.04 0.04 0.45</ambient>
+            <diffuse>0.75 0.05 0.05 0.45</diffuse>
+          </material>
+          <transparency>0.55</transparency>
+        </visual>
+      </link>
+    </model>
+
+    <model name="enemy_stronghold_tower_a">
+      <static>true</static>
+      <pose>8.2 8.0 0.8 0 0 0</pose>
+      <link name="link">
+        <collision name="base_collision"><geometry><cylinder><radius>0.34</radius><length>1.6</length></cylinder></geometry></collision>
+        <visual name="base_visual"><geometry><cylinder><radius>0.34</radius><length>1.6</length></cylinder></geometry><material><ambient>0.60 0.05 0.05 1</ambient><diffuse>0.70 0.06 0.06 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="enemy_stronghold_tower_b">
+      <static>true</static>
+      <pose>6.6 8.7 0.65 0 0 0</pose>
+      <link name="link">
+        <collision name="base_collision"><geometry><cylinder><radius>0.28</radius><length>1.3</length></cylinder></geometry></collision>
+        <visual name="base_visual"><geometry><cylinder><radius>0.28</radius><length>1.3</length></cylinder></geometry><material><ambient>0.55 0.04 0.04 1</ambient><diffuse>0.65 0.05 0.05 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="enemy_sentry_post_west">
+      <static>true</static>
+      <pose>5.5 7.2 0.55 0 0 0.35</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.8 0.8 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.8 0.8 1.1</size></box></geometry><material><ambient>0.42 0.12 0.10 1</ambient><diffuse>0.50 0.14 0.12 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="enemy_sentry_post_south">
+      <static>true</static>
+      <pose>7.2 5.45 0.55 0 0 -0.25</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.7 0.9 1.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.7 0.9 1.1</size></box></geometry><material><ambient>0.42 0.12 0.10 1</ambient><diffuse>0.50 0.14 0.12 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="enemy_barricade_outer">
+      <static>true</static>
+      <pose>6.6 6.15 0.35 0 0 -0.35</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>2.8 0.25 0.7</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>2.8 0.25 0.7</size></box></geometry><material><ambient>0.35 0.13 0.11 1</ambient><diffuse>0.42 0.15 0.12 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="enemy_barricade_inner">
+      <static>true</static>
+      <pose>8.25 6.55 0.35 0 0 1.25</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>2.1 0.24 0.7</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>2.1 0.24 0.7</size></box></geometry><material><ambient>0.35 0.13 0.11 1</ambient><diffuse>0.42 0.15 0.12 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="enemy_zone_corner_marker_sw">
+      <static>true</static>
+      <pose>4.9 4.9 0.35 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><cylinder><radius>0.15</radius><length>0.7</length></cylinder></geometry></collision>
+        <visual name="visual"><geometry><cylinder><radius>0.15</radius><length>0.7</length></cylinder></geometry><material><ambient>0.80 0.00 0.00 1</ambient><diffuse>0.90 0.00 0.00 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="enemy_zone_corner_marker_nw">
+      <static>true</static>
+      <pose>4.9 9.65 0.35 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><cylinder><radius>0.15</radius><length>0.7</length></cylinder></geometry></collision>
+        <visual name="visual"><geometry><cylinder><radius>0.15</radius><length>0.7</length></cylinder></geometry><material><ambient>0.80 0.00 0.00 1</ambient><diffuse>0.90 0.00 0.00 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="enemy_zone_corner_marker_se">
+      <static>true</static>
+      <pose>9.65 4.9 0.35 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><cylinder><radius>0.15</radius><length>0.7</length></cylinder></geometry></collision>
+        <visual name="visual"><geometry><cylinder><radius>0.15</radius><length>0.7</length></cylinder></geometry><material><ambient>0.80 0.00 0.00 1</ambient><diffuse>0.90 0.00 0.00 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="enemy_vision_ray_center">
+      <static>true</static>
+      <pose>5.35 6.55 0.035 0 0 -2.35</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><box><size>3.4 0.08 0.02</size></box></geometry>
+          <material>
+            <ambient>1.0 0.0 0.0 0.35</ambient>
+            <diffuse>1.0 0.0 0.0 0.35</diffuse>
+          </material>
+          <transparency>0.65</transparency>
+        </visual>
+      </link>
+    </model>
+
+    <model name="enemy_vision_ray_left">
+      <static>true</static>
+      <pose>5.2 7.0 0.036 0 0 -2.05</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><box><size>3.1 0.07 0.02</size></box></geometry>
+          <material>
+            <ambient>1.0 0.0 0.0 0.28</ambient>
+            <diffuse>1.0 0.0 0.0 0.28</diffuse>
+          </material>
+          <transparency>0.72</transparency>
+        </visual>
+      </link>
+    </model>
+
+    <model name="enemy_vision_ray_right">
+      <static>true</static>
+      <pose>5.75 6.18 0.037 0 0 -2.65</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><box><size>3.0 0.07 0.02</size></box></geometry>
+          <material>
+            <ambient>1.0 0.0 0.0 0.28</ambient>
+            <diffuse>1.0 0.0 0.0 0.28</diffuse>
+          </material>
+          <transparency>0.72</transparency>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>
