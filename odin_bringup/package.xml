@@ -12,6 +12,8 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>multirobot_map_merge</exec_depend>
+  <exec_depend>odin_coordinator</exec_depend>
+  <exec_depend>odin_detection</exec_depend>
   <exec_depend>odin_exploration</exec_depend>
   <exec_depend>odin_gazebo</exec_depend>
   <exec_depend>odin_map_merge</exec_depend>

@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
@@ -9,6 +10,8 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     gui = LaunchConfiguration('gui')
     world = LaunchConfiguration('world')
+    start_detection = LaunchConfiguration('start_detection')
+    start_coordinator = LaunchConfiguration('start_coordinator')
 
     gazebo_launch = PathJoinSubstitution([
         FindPackageShare('odin_gazebo'),
@@ -24,6 +27,16 @@ def generate_launch_description():
         FindPackageShare('odin_exploration'),
         'launch',
         'reactive_scouts.launch.py',
+    ])
+    detection_launch = PathJoinSubstitution([
+        FindPackageShare('odin_detection'),
+        'launch',
+        'gazebo_aruco_event_detector.launch.py',
+    ])
+    coordinator_launch = PathJoinSubstitution([
+        FindPackageShare('odin_coordinator'),
+        'launch',
+        'rescue_coordinator.launch.py',
     ])
 
     return LaunchDescription([
@@ -46,6 +59,16 @@ def generate_launch_description():
             ]),
             description='Optional Gazebo world file passed through to odin_gazebo.',
         ),
+        DeclareLaunchArgument(
+            'start_detection',
+            default_value='true',
+            description='Start Gazebo-based ArUco hostage event detector.',
+        ),
+        DeclareLaunchArgument(
+            'start_coordinator',
+            default_value='true',
+            description='Start hostage event validation and rescue candidate coordinator.',
+        ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(gazebo_launch),
             launch_arguments={
@@ -63,6 +86,26 @@ def generate_launch_description():
             actions=[
                 IncludeLaunchDescription(
                     PythonLaunchDescriptionSource(exploration_launch),
+                ),
+            ],
+        ),
+        TimerAction(
+            period=8.0,
+            actions=[
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(detection_launch),
+                    launch_arguments={'use_sim_time': use_sim_time}.items(),
+                    condition=IfCondition(start_detection),
+                ),
+            ],
+        ),
+        TimerAction(
+            period=9.0,
+            actions=[
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(coordinator_launch),
+                    launch_arguments={'use_sim_time': use_sim_time}.items(),
+                    condition=IfCondition(start_coordinator),
                 ),
             ],
         ),
