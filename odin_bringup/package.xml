@@ -12,9 +12,13 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>multirobot_map_merge</exec_depend>
+  <exec_depend>odin_ai</exec_depend>
+  <exec_depend>odin_coordinator</exec_depend>
+  <exec_depend>odin_detection</exec_depend>
   <exec_depend>odin_exploration</exec_depend>
   <exec_depend>odin_gazebo</exec_depend>
   <exec_depend>odin_map_merge</exec_depend>
+  <exec_depend>odin_navigation</exec_depend>
   <exec_depend>odin_slam</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>

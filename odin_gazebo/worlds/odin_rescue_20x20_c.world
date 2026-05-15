@@ -3,6 +3,7 @@
   <world name="odin_rescue_20x20_c">
     <plugin name="gazebo_ros_init" filename="libgazebo_ros_init.so"/>
     <plugin name="gazebo_ros_factory" filename="libgazebo_ros_factory.so"/>
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so"/>
 
     <include>
       <uri>model://sun</uri>

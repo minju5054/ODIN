@@ -1,0 +1,33 @@
+rescue_coordinator:
+  ros__parameters:
+    global_frame: map
+    hostage_event_topic: /hostage_events
+    merged_map_topic: /merged_map
+    status_topic: /coordinator/status
+    candidate_path_topic: /coordinator/candidate_path
+    rescue_goal_topic: /robot_3/goal_pose
+    ai_waypoint_topic: /ai/waypoint_recommendation
+    validated_waypoint_topic: /coordinator/validated_waypoint
+    robot_names:
+      - robot_1
+      - robot_2
+      - robot_3
+    safe_insertion_x: -7.5
+    safe_insertion_y: -7.5
+    safe_insertion_yaw: 0.785398
+    map_min_x: -10.0
+    map_max_x: 10.0
+    map_min_y: -10.0
+    map_max_y: 10.0
+    duplicate_distance_m: 0.75
+    duplicate_window_sec: 60.0
+    rescue_standoff_m: 0.9
+    rescue_standoff_samples: 16
+    rescue_standoff_extra_radii_m:
+      - 1.2
+      - 1.5
+    path_waypoint_spacing_m: 0.5
+    occupied_threshold: 65
+    accessibility_radius_m: 0.15
+    allow_unknown_cells: true
+    require_robot_3_available_for_goal: true

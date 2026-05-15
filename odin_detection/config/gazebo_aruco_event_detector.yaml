@@ -1,0 +1,14 @@
+gazebo_aruco_event_detector:
+  ros__parameters:
+    robot_names:
+      - robot_1
+      - robot_2
+    marker_model_name: hostage_aruco_marker_0
+    marker_id: 0
+    global_frame: map
+    model_states_topic: /model_states
+    event_topic: /hostage_events
+    victim_event_topic: ''
+    detection_range_m: 4.0
+    detection_fov_deg: 100.0
+    event_min_period_sec: 3.0

@@ -3,7 +3,7 @@ from os.path import join
 
 from setuptools import setup
 
-package_name = 'odin_navigation'
+package_name = 'odin_coordinator'
 
 setup(
     name=package_name,
@@ -12,20 +12,19 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        (join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (join('share', package_name, 'config'), glob('config/*.yaml')),
+        (join('share', package_name, 'launch'), glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='odin',
     maintainer_email='odin@example.com',
-    description='Nav2 and frontier exploration launch files for ODIN-RESCUE.',
+    description='Hostage event validation and rescue candidate coordination for ODIN-RESCUE.',
     license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'robot_3_spawn_on_goal = odin_navigation.robot_3_spawn_on_goal:main',
-            'simple_goal_follower = odin_navigation.simple_goal_follower:main',
+            'rescue_coordinator = odin_coordinator.rescue_coordinator:main',
         ],
     },
 )
