@@ -8,6 +8,7 @@ rescue_coordinator:
     rescue_goal_topic: /robot_3/goal_pose
     ai_waypoint_topic: /ai/waypoint_recommendation
     validated_waypoint_topic: /coordinator/validated_waypoint
+    battlefield_config_file: ''
     robot_names:
       - robot_1
       - robot_2

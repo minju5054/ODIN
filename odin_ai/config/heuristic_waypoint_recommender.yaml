@@ -4,6 +4,7 @@ heuristic_waypoint_recommender:
     merged_map_topic: /merged_map
     recommendation_topic: /ai/waypoint_recommendation
     status_topic: /ai/status
+    battlefield_config_file: ''
     prefer_goal_index_from_end: 0
     occupied_threshold: 65
     allow_unknown_cells: true

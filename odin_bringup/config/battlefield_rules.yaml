@@ -1,0 +1,69 @@
+battlefield:
+  global_frame: map
+
+  # Coordinator bounds for rejecting impossible world coordinates
+  map_bounds:
+    min_x: -10.0
+    max_x: 10.0
+    min_y: -10.0
+    max_y: 10.0
+
+  # Known initial poses for the current fixed-spawn simulation
+  robot_spawns:
+    robot_1:
+      x: -7.5
+      y: 7.5
+      yaw: -1.5708
+
+    robot_2:
+      x: 7.5
+      y: -7.5
+      yaw: 1.5708
+
+    robot_3:
+      x: -7.5
+      y: -7.5
+      yaw: 0.785398
+
+  # Initial safe corner used by robot_3 before coordinator dispatch
+  safe_insertion:
+    name: default_safe_corner
+    x: -7.5
+    y: -7.5
+    yaw: 0.785398
+
+  # Preferred central search area for scout exploration bias
+  hostage_search_area:
+    name: central_hostage_candidate_area
+    min_x: -3.5
+    max_x: 3.5
+    min_y: -3.5
+    max_y: 3.5
+
+  # Hard reject goals, waypoints, or path segments that enter this zone
+  red_zones:
+    - name: enemy_stronghold
+      type: rectangle
+      min_x: 4.0
+      max_x: 10.0
+      min_y: 4.0
+      max_y: 10.0
+      hard_reject: true
+
+  # Risk zone used by mock AI/Qwen scoring and final coordinator validation
+  enemy_vision_zones:
+    - name: stronghold_watch_radius
+      type: circle
+      center_x: 7.0
+      center_y: 7.0
+      radius_m: 4.0
+      hard_reject: true
+
+  # Rendering colors for the OpenCV/PIL tactical overlay pipeline
+  qwen_overlay:
+    red_zone_color: red
+    enemy_vision_color: red
+    robot_3_color: blue
+    candidate_waypoint_color: green
+    hostage_color: yellow
+    scout_robot_color: purple

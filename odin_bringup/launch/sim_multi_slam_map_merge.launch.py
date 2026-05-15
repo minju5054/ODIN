@@ -50,6 +50,11 @@ def generate_launch_description():
         'launch',
         'robot_3_simple_dispatch.launch.py',
     ])
+    battlefield_config = PathJoinSubstitution([
+        FindPackageShare('odin_bringup'),
+        'config',
+        'battlefield_rules.yaml',
+    ])
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -126,7 +131,10 @@ def generate_launch_description():
             actions=[
                 IncludeLaunchDescription(
                     PythonLaunchDescriptionSource(coordinator_launch),
-                    launch_arguments={'use_sim_time': use_sim_time}.items(),
+                    launch_arguments={
+                        'use_sim_time': use_sim_time,
+                        'battlefield_config_file': battlefield_config,
+                    }.items(),
                     condition=IfCondition(start_coordinator),
                 ),
             ],
@@ -136,7 +144,10 @@ def generate_launch_description():
             actions=[
                 IncludeLaunchDescription(
                     PythonLaunchDescriptionSource(ai_launch),
-                    launch_arguments={'use_sim_time': use_sim_time}.items(),
+                    launch_arguments={
+                        'use_sim_time': use_sim_time,
+                        'battlefield_config_file': battlefield_config,
+                    }.items(),
                     condition=IfCondition(start_ai),
                 ),
             ],

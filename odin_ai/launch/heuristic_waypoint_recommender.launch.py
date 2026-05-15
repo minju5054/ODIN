@@ -10,6 +10,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     params_file = LaunchConfiguration('ai_params_file')
+    battlefield_config_file = LaunchConfiguration('battlefield_config_file')
     default_params = os.path.join(
         get_package_share_directory('odin_ai'),
         'config',
@@ -27,6 +28,11 @@ def generate_launch_description():
             default_value=default_params,
             description='Heuristic AI recommender parameter file.',
         ),
+        DeclareLaunchArgument(
+            'battlefield_config_file',
+            default_value='',
+            description='Shared battlefield rules YAML file.',
+        ),
         Node(
             package='odin_ai',
             executable='heuristic_waypoint_recommender',
@@ -34,7 +40,10 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 params_file,
-                {'use_sim_time': use_sim_time},
+                {
+                    'use_sim_time': use_sim_time,
+                    'battlefield_config_file': battlefield_config_file,
+                },
             ],
         ),
     ])

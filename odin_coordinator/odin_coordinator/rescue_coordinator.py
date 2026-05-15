@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import rclpy
+import yaml
 from geometry_msgs.msg import Pose, PoseStamped
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from odin_interfaces.msg import HostageEvent
@@ -28,6 +29,25 @@ class RobotState:
     has_odom: bool = False
 
 
+@dataclass
+class RectangleZone:
+    name: str
+    min_x: float
+    max_x: float
+    min_y: float
+    max_y: float
+    hard_reject: bool = True
+
+
+@dataclass
+class CircleZone:
+    name: str
+    center_x: float
+    center_y: float
+    radius_m: float
+    hard_reject: bool = True
+
+
 class RescueCoordinator(Node):
     """Validate hostage events and prepare safe robot_3 rescue candidates."""
 
@@ -42,6 +62,7 @@ class RescueCoordinator(Node):
         self.declare_parameter('rescue_goal_topic', '/robot_3/goal_pose')
         self.declare_parameter('ai_waypoint_topic', '/ai/waypoint_recommendation')
         self.declare_parameter('validated_waypoint_topic', '/coordinator/validated_waypoint')
+        self.declare_parameter('battlefield_config_file', '')
         self.declare_parameter('robot_names', ['robot_1', 'robot_2', 'robot_3'])
         self.declare_parameter('safe_insertion_x', -7.5)
         self.declare_parameter('safe_insertion_y', -7.5)
@@ -91,6 +112,9 @@ class RescueCoordinator(Node):
         self.latest_map: Optional[OccupancyGrid] = None
         self.seen_events: List[SeenEvent] = []
         self.robot_states: Dict[str, RobotState] = {}
+        self.red_zones: List[RectangleZone] = []
+        self.enemy_vision_zones: List[CircleZone] = []
+        self._load_battlefield_config(str(self.get_parameter('battlefield_config_file').value))
 
         status_topic = str(self.get_parameter('status_topic').value)
         candidate_path_topic = str(self.get_parameter('candidate_path_topic').value)
@@ -231,6 +255,9 @@ class RescueCoordinator(Node):
         y = pose_stamped.pose.position.y
         if not self._within_bounds(x, y):
             return False, 'out_of_bounds'
+        forbidden_zone = self._forbidden_zone_name(x, y)
+        if forbidden_zone is not None:
+            return False, f'forbidden_zone:{forbidden_zone}'
         if require_map and not self._pose_is_accessible(x, y):
             return False, 'map_inaccessible'
         return True, 'ok'
@@ -393,6 +420,74 @@ class RescueCoordinator(Node):
 
     def _within_bounds(self, x: float, y: float) -> bool:
         return self.map_min_x <= x <= self.map_max_x and self.map_min_y <= y <= self.map_max_y
+
+    def _load_battlefield_config(self, config_file: str) -> None:
+        if not config_file:
+            self.get_logger().info('No battlefield_config_file provided; using coordinator params only')
+            return
+
+        try:
+            with open(config_file, 'r', encoding='utf-8') as config:
+                battlefield = yaml.safe_load(config).get('battlefield', {})
+        except (OSError, yaml.YAMLError, AttributeError) as exc:
+            self.get_logger().warning(f'Failed to load battlefield config {config_file}: {exc}')
+            return
+
+        bounds = battlefield.get('map_bounds', {})
+        self.map_min_x = float(bounds.get('min_x', self.map_min_x))
+        self.map_max_x = float(bounds.get('max_x', self.map_max_x))
+        self.map_min_y = float(bounds.get('min_y', self.map_min_y))
+        self.map_max_y = float(bounds.get('max_y', self.map_max_y))
+
+        insertion = battlefield.get('safe_insertion', {})
+        self.safe_insertion_x = float(insertion.get('x', self.safe_insertion_x))
+        self.safe_insertion_y = float(insertion.get('y', self.safe_insertion_y))
+        self.safe_insertion_yaw = float(insertion.get('yaw', self.safe_insertion_yaw))
+
+        self.red_zones = [
+            RectangleZone(
+                name=str(zone.get('name', 'red_zone')),
+                min_x=float(zone['min_x']),
+                max_x=float(zone['max_x']),
+                min_y=float(zone['min_y']),
+                max_y=float(zone['max_y']),
+                hard_reject=bool(zone.get('hard_reject', True)),
+            )
+            for zone in battlefield.get('red_zones', [])
+            if zone.get('type', 'rectangle') == 'rectangle'
+        ]
+        self.enemy_vision_zones = [
+            CircleZone(
+                name=str(zone.get('name', 'enemy_vision_zone')),
+                center_x=float(zone['center_x']),
+                center_y=float(zone['center_y']),
+                radius_m=float(zone['radius_m']),
+                hard_reject=bool(zone.get('hard_reject', True)),
+            )
+            for zone in battlefield.get('enemy_vision_zones', [])
+            if zone.get('type', 'circle') == 'circle'
+        ]
+
+        self.get_logger().info(
+            'Loaded battlefield config: '
+            f'{len(self.red_zones)} red zone(s), '
+            f'{len(self.enemy_vision_zones)} enemy vision zone(s)'
+        )
+
+    def _forbidden_zone_name(self, x: float, y: float) -> Optional[str]:
+        for zone in self.red_zones:
+            if not zone.hard_reject:
+                continue
+            if zone.min_x <= x <= zone.max_x and zone.min_y <= y <= zone.max_y:
+                return zone.name
+
+        for zone in self.enemy_vision_zones:
+            if not zone.hard_reject:
+                continue
+            if math.hypot(x - zone.center_x, y - zone.center_y) <= zone.radius_m:
+                return zone.name
+
+        return None
 
     @staticmethod
     def _pose_values_are_finite(pose: Pose) -> bool:
