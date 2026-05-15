@@ -1,0 +1,27 @@
+robot_3:
+  simple_goal_follower:
+    ros__parameters:
+      goal_topic: goal_pose
+      odom_topic: odom
+      scan_topic: scan
+      cmd_vel_topic: cmd_vel
+      status_topic: dispatch_status
+      goal_tolerance_m: 0.25
+      yaw_tolerance_rad: 0.35
+      max_linear_speed: 0.16
+      max_angular_speed: 0.75
+      heading_gain: 1.4
+      distance_slowdown_m: 1.0
+      obstacle_stop_distance_m: 0.34
+      front_fov_deg: 35.0
+
+robot_3_spawn_on_goal:
+  ros__parameters:
+    goal_topic: /robot_3/goal_pose
+    status_topic: /robot_3/dispatch_status
+    robot_name: robot_3
+    spawn_x: -7.5
+    spawn_y: -7.5
+    spawn_z: 0.01
+    spawn_yaw: 0.785398
+    spawn_service: /spawn_entity

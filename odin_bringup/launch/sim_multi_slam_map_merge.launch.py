@@ -12,6 +12,8 @@ def generate_launch_description():
     world = LaunchConfiguration('world')
     start_detection = LaunchConfiguration('start_detection')
     start_coordinator = LaunchConfiguration('start_coordinator')
+    start_ai = LaunchConfiguration('start_ai')
+    start_robot_3_dispatch = LaunchConfiguration('start_robot_3_dispatch')
 
     gazebo_launch = PathJoinSubstitution([
         FindPackageShare('odin_gazebo'),
@@ -37,6 +39,16 @@ def generate_launch_description():
         FindPackageShare('odin_coordinator'),
         'launch',
         'rescue_coordinator.launch.py',
+    ])
+    ai_launch = PathJoinSubstitution([
+        FindPackageShare('odin_ai'),
+        'launch',
+        'heuristic_waypoint_recommender.launch.py',
+    ])
+    robot_3_dispatch_launch = PathJoinSubstitution([
+        FindPackageShare('odin_navigation'),
+        'launch',
+        'robot_3_simple_dispatch.launch.py',
     ])
 
     return LaunchDescription([
@@ -68,6 +80,16 @@ def generate_launch_description():
             'start_coordinator',
             default_value='true',
             description='Start hostage event validation and rescue candidate coordinator.',
+        ),
+        DeclareLaunchArgument(
+            'start_ai',
+            default_value='true',
+            description='Start local heuristic AI waypoint recommender.',
+        ),
+        DeclareLaunchArgument(
+            'start_robot_3_dispatch',
+            default_value='true',
+            description='Start conservative robot_3 goal follower.',
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(gazebo_launch),
@@ -106,6 +128,26 @@ def generate_launch_description():
                     PythonLaunchDescriptionSource(coordinator_launch),
                     launch_arguments={'use_sim_time': use_sim_time}.items(),
                     condition=IfCondition(start_coordinator),
+                ),
+            ],
+        ),
+        TimerAction(
+            period=10.0,
+            actions=[
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(ai_launch),
+                    launch_arguments={'use_sim_time': use_sim_time}.items(),
+                    condition=IfCondition(start_ai),
+                ),
+            ],
+        ),
+        TimerAction(
+            period=10.0,
+            actions=[
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(robot_3_dispatch_launch),
+                    launch_arguments={'use_sim_time': use_sim_time}.items(),
+                    condition=IfCondition(start_robot_3_dispatch),
                 ),
             ],
         ),

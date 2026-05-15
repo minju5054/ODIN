@@ -185,8 +185,9 @@ class RescueCoordinator(Node):
             return
 
         self.validated_waypoint_pub.publish(waypoint)
+        self.rescue_goal_pub.publish(waypoint)
         self._publish_status(
-            'ai_waypoint_validated '
+            'ai_waypoint_validated dispatch_requested '
             f'x={waypoint.pose.position.x:.2f} y={waypoint.pose.position.y:.2f}'
         )
 
