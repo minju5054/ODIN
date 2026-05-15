@@ -48,7 +48,7 @@ def generate_launch_description():
     robot_3_dispatch_launch = PathJoinSubstitution([
         FindPackageShare('odin_navigation'),
         'launch',
-        'robot_3_simple_dispatch.launch.py',
+        'robot_3_nav2_dispatch.launch.py',
     ])
     battlefield_config = PathJoinSubstitution([
         FindPackageShare('odin_bringup'),
@@ -94,7 +94,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'start_robot_3_dispatch',
             default_value='true',
-            description='Start conservative robot_3 goal follower.',
+            description='Start robot_3 spawn-on-goal and Nav2 dispatch stack.',
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(gazebo_launch),

@@ -31,4 +31,7 @@ rescue_coordinator:
     occupied_threshold: 65
     accessibility_radius_m: 0.15
     allow_unknown_cells: true
-    require_robot_3_available_for_goal: true
+    require_robot_3_available_for_goal: false
+    use_nav2_path_planning: true
+    compute_path_action: /robot_3/compute_path_to_pose
+    fallback_to_straight_path: true

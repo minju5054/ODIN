@@ -14,6 +14,9 @@ robot_3:
       distance_slowdown_m: 1.0
       obstacle_stop_distance_m: 0.34
       front_fov_deg: 35.0
+      side_fov_deg: 70.0
+      avoid_turn_speed: 0.55
+      avoid_clear_distance_m: 0.55
 
 robot_3_spawn_on_goal:
   ros__parameters:

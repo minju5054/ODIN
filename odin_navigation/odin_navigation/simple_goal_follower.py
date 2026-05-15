@@ -29,6 +29,9 @@ class SimpleGoalFollower(Node):
         self.declare_parameter('distance_slowdown_m', 1.0)
         self.declare_parameter('obstacle_stop_distance_m', 0.34)
         self.declare_parameter('front_fov_deg', 35.0)
+        self.declare_parameter('side_fov_deg', 70.0)
+        self.declare_parameter('avoid_turn_speed', 0.55)
+        self.declare_parameter('avoid_clear_distance_m', 0.55)
 
         self.goal_tolerance_m = float(self.get_parameter('goal_tolerance_m').value)
         self.yaw_tolerance_rad = float(self.get_parameter('yaw_tolerance_rad').value)
@@ -38,10 +41,16 @@ class SimpleGoalFollower(Node):
         self.distance_slowdown_m = float(self.get_parameter('distance_slowdown_m').value)
         self.obstacle_stop_distance_m = float(self.get_parameter('obstacle_stop_distance_m').value)
         self.front_fov = math.radians(float(self.get_parameter('front_fov_deg').value))
+        self.side_fov = math.radians(float(self.get_parameter('side_fov_deg').value))
+        self.avoid_turn_speed = float(self.get_parameter('avoid_turn_speed').value)
+        self.avoid_clear_distance_m = float(self.get_parameter('avoid_clear_distance_m').value)
 
         self.goal: Optional[PoseStamped] = None
         self.pose: Optional[Pose] = None
         self.front_clearance = math.inf
+        self.left_clearance = math.inf
+        self.right_clearance = math.inf
+        self.avoid_turn_direction = 1.0
         self.active = False
 
         self.cmd_pub = self.create_publisher(
@@ -88,14 +97,23 @@ class SimpleGoalFollower(Node):
 
     def _scan_callback(self, msg: LaserScan) -> None:
         front_ranges = []
+        left_ranges = []
+        right_ranges = []
         half_fov = self.front_fov / 2.0
         for index, value in enumerate(msg.ranges):
             angle = msg.angle_min + index * msg.angle_increment
-            if abs(self._normalize_angle(angle)) > half_fov:
+            normalized = self._normalize_angle(angle)
+            if not (math.isfinite(value) and msg.range_min <= value <= msg.range_max):
                 continue
-            if math.isfinite(value) and msg.range_min <= value <= msg.range_max:
+            if abs(normalized) <= half_fov:
                 front_ranges.append(value)
+            elif 0.0 < normalized <= self.side_fov:
+                left_ranges.append(value)
+            elif -self.side_fov <= normalized < 0.0:
+                right_ranges.append(value)
         self.front_clearance = min(front_ranges) if front_ranges else math.inf
+        self.left_clearance = min(left_ranges) if left_ranges else math.inf
+        self.right_clearance = min(right_ranges) if right_ranges else math.inf
 
     def _control_loop(self) -> None:
         cmd = Twist()
@@ -127,10 +145,27 @@ class SimpleGoalFollower(Node):
             return
 
         if self.front_clearance < self.obstacle_stop_distance_m:
+            self.avoid_turn_direction = 1.0 if self.left_clearance >= self.right_clearance else -1.0
+            cmd.angular.z = self.avoid_turn_direction * min(
+                abs(self.avoid_turn_speed),
+                self.max_angular_speed,
+            )
             self.cmd_pub.publish(cmd)
             self._publish_status(
-                f'dispatch_paused reason=obstacle distance={self.front_clearance:.2f}'
+                'dispatch_avoiding_obstacle '
+                f'front={self.front_clearance:.2f} left={self.left_clearance:.2f} '
+                f'right={self.right_clearance:.2f}'
             )
+            return
+
+        if self.front_clearance < self.avoid_clear_distance_m and abs(heading_error) < 0.45:
+            self.avoid_turn_direction = 1.0 if self.left_clearance >= self.right_clearance else -1.0
+            cmd.linear.x = self.max_linear_speed * 0.35
+            cmd.angular.z = self.avoid_turn_direction * min(
+                abs(self.avoid_turn_speed) * 0.65,
+                self.max_angular_speed,
+            )
+            self.cmd_pub.publish(cmd)
             return
 
         cmd.angular.z = self._clamp(

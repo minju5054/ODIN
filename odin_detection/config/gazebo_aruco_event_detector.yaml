@@ -9,6 +9,11 @@ gazebo_aruco_event_detector:
     model_states_topic: /model_states
     event_topic: /hostage_events
     victim_event_topic: ''
+    merged_map_topic: /merged_map
     detection_range_m: 4.0
     detection_fov_deg: 100.0
     event_min_period_sec: 3.0
+    require_line_of_sight: true
+    line_of_sight_step_m: 0.05
+    occupied_threshold: 65
+    allow_unknown_line_of_sight: false

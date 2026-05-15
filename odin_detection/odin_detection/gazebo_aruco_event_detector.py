@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 import rclpy
 from gazebo_msgs.msg import ModelStates
 from geometry_msgs.msg import Pose
+from nav_msgs.msg import OccupancyGrid
 from odin_interfaces.msg import HostageEvent
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -22,9 +23,14 @@ class GazeboArucoEventDetector(Node):
         self.declare_parameter('model_states_topic', '/model_states')
         self.declare_parameter('event_topic', '/hostage_events')
         self.declare_parameter('victim_event_topic', '')
+        self.declare_parameter('merged_map_topic', '/merged_map')
         self.declare_parameter('detection_range_m', 4.0)
         self.declare_parameter('detection_fov_deg', 100.0)
         self.declare_parameter('event_min_period_sec', 3.0)
+        self.declare_parameter('require_line_of_sight', True)
+        self.declare_parameter('line_of_sight_step_m', 0.05)
+        self.declare_parameter('occupied_threshold', 65)
+        self.declare_parameter('allow_unknown_line_of_sight', False)
 
         self.robot_names: List[str] = [
             str(name) for name in self.get_parameter('robot_names').value
@@ -37,11 +43,19 @@ class GazeboArucoEventDetector(Node):
             float(self.get_parameter('detection_fov_deg').value) / 2.0
         )
         self.event_min_period_sec = float(self.get_parameter('event_min_period_sec').value)
+        self.require_line_of_sight = bool(self.get_parameter('require_line_of_sight').value)
+        self.line_of_sight_step_m = float(self.get_parameter('line_of_sight_step_m').value)
+        self.occupied_threshold = int(self.get_parameter('occupied_threshold').value)
+        self.allow_unknown_line_of_sight = bool(
+            self.get_parameter('allow_unknown_line_of_sight').value
+        )
         self.last_event_time_by_robot: Dict[str, float] = {}
+        self.latest_map: Optional[OccupancyGrid] = None
 
         event_topic = str(self.get_parameter('event_topic').value)
         victim_event_topic = str(self.get_parameter('victim_event_topic').value)
         model_states_topic = str(self.get_parameter('model_states_topic').value)
+        merged_map_topic = str(self.get_parameter('merged_map_topic').value)
 
         self.event_pub = self.create_publisher(HostageEvent, event_topic, 10)
         self.victim_event_pub = (
@@ -50,12 +64,16 @@ class GazeboArucoEventDetector(Node):
             else None
         )
         self.create_subscription(ModelStates, model_states_topic, self._model_states_callback, 10)
+        self.create_subscription(OccupancyGrid, merged_map_topic, self._map_callback, 1)
 
         self.get_logger().info(
             'Gazebo ArUco event detector started: '
             f'robots={self.robot_names}, marker={self.marker_model_name}, '
-            f'event_topic={event_topic}'
+            f'event_topic={event_topic}, require_line_of_sight={self.require_line_of_sight}'
         )
+
+    def _map_callback(self, msg: OccupancyGrid) -> None:
+        self.latest_map = msg
 
     def _model_states_callback(self, msg: ModelStates) -> None:
         poses = dict(zip(msg.name, msg.pose))
@@ -92,7 +110,57 @@ class GazeboArucoEventDetector(Node):
         )
         marker_bearing = math.atan2(dy, dx)
         relative_bearing = self._normalize_angle(marker_bearing - robot_yaw)
-        return abs(relative_bearing) <= self.detection_half_fov
+        if abs(relative_bearing) > self.detection_half_fov:
+            return False
+
+        if self.require_line_of_sight:
+            return self._has_line_of_sight(
+                robot_pose.position.x,
+                robot_pose.position.y,
+                marker_pose.position.x,
+                marker_pose.position.y,
+            )
+        return True
+
+    def _has_line_of_sight(self, start_x: float, start_y: float, end_x: float, end_y: float) -> bool:
+        if self.latest_map is None:
+            self.get_logger().debug('Line-of-sight rejected because /merged_map is not ready.')
+            return False
+
+        dx = end_x - start_x
+        dy = end_y - start_y
+        distance = math.hypot(dx, dy)
+        if distance <= 1e-6:
+            return True
+
+        step_m = max(self.line_of_sight_step_m, self.latest_map.info.resolution)
+        steps = max(1, int(math.ceil(distance / step_m)))
+        # Skip the exact endpoints so the robot footprint and marker wall mounting do not reject itself.
+        for index in range(1, steps):
+            ratio = index / steps
+            x = start_x + dx * ratio
+            y = start_y + dy * ratio
+            value = self._map_value_at(x, y)
+            if value is None:
+                return False
+            if value < 0:
+                if not self.allow_unknown_line_of_sight:
+                    return False
+                continue
+            if value >= self.occupied_threshold:
+                return False
+        return True
+
+    def _map_value_at(self, x: float, y: float) -> Optional[int]:
+        if self.latest_map is None:
+            return None
+        origin = self.latest_map.info.origin.position
+        resolution = self.latest_map.info.resolution
+        cell_x = int(math.floor((x - origin.x) / resolution))
+        cell_y = int(math.floor((y - origin.y) / resolution))
+        if not (0 <= cell_x < self.latest_map.info.width and 0 <= cell_y < self.latest_map.info.height):
+            return None
+        return int(self.latest_map.data[cell_y * self.latest_map.info.width + cell_x])
 
     def _publish_event(self, robot_name: str, marker_pose: Pose) -> None:
         event = HostageEvent()

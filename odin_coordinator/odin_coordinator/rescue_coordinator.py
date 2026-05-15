@@ -5,8 +5,10 @@ from typing import Dict, List, Optional, Tuple
 import rclpy
 import yaml
 from geometry_msgs.msg import Pose, PoseStamped
+from nav2_msgs.action import ComputePathToPose
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from odin_interfaces.msg import HostageEvent
+from rclpy.action import ActionClient
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
@@ -81,6 +83,9 @@ class RescueCoordinator(Node):
         self.declare_parameter('accessibility_radius_m', 0.25)
         self.declare_parameter('allow_unknown_cells', True)
         self.declare_parameter('require_robot_3_available_for_goal', True)
+        self.declare_parameter('use_nav2_path_planning', True)
+        self.declare_parameter('compute_path_action', '/robot_3/compute_path_to_pose')
+        self.declare_parameter('fallback_to_straight_path', True)
 
         self.global_frame = str(self.get_parameter('global_frame').value)
         self.safe_insertion_x = float(self.get_parameter('safe_insertion_x').value)
@@ -108,6 +113,10 @@ class RescueCoordinator(Node):
         self.require_robot_3_available_for_goal = bool(
             self.get_parameter('require_robot_3_available_for_goal').value
         )
+        self.use_nav2_path_planning = bool(self.get_parameter('use_nav2_path_planning').value)
+        self.fallback_to_straight_path = bool(
+            self.get_parameter('fallback_to_straight_path').value
+        )
 
         self.latest_map: Optional[OccupancyGrid] = None
         self.seen_events: List[SeenEvent] = []
@@ -128,6 +137,11 @@ class RescueCoordinator(Node):
             PoseStamped,
             validated_waypoint_topic,
             10,
+        )
+        self.compute_path_client = ActionClient(
+            self,
+            ComputePathToPose,
+            str(self.get_parameter('compute_path_action').value),
         )
 
         self.create_subscription(
@@ -179,9 +193,109 @@ class RescueCoordinator(Node):
             return
 
         path = self._make_candidate_path(rescue_goal)
+        if self.use_nav2_path_planning and self.compute_path_client.server_is_ready():
+            self._request_nav2_path(event, rescue_goal, path)
+            return
+
+        if self.use_nav2_path_planning and not self.compute_path_client.server_is_ready():
+            self._publish_status(
+                'nav2_planner_unavailable '
+                f'fallback_to_straight_path={self.fallback_to_straight_path}'
+            )
+            if not self.fallback_to_straight_path:
+                return
+
+        self._approve_candidate(event, rescue_goal, path, planner='straight_fallback')
+
+    def _ai_waypoint_callback(self, waypoint: PoseStamped) -> None:
+        valid, reason = self._validate_pose_stamped(waypoint, require_map=True)
+        if not valid:
+            self._publish_status(f'rejected_ai_waypoint reason={reason}')
+            return
+
+        self.validated_waypoint_pub.publish(waypoint)
+        self.rescue_goal_pub.publish(waypoint)
+        self._publish_status(
+            'ai_waypoint_validated dispatch_requested '
+            f'x={waypoint.pose.position.x:.2f} y={waypoint.pose.position.y:.2f}'
+        )
+
+    def _request_nav2_path(
+        self,
+        event: HostageEvent,
+        rescue_goal: PoseStamped,
+        fallback_path: Path,
+    ) -> None:
+        request = ComputePathToPose.Goal()
+        request.goal = rescue_goal
+        request.start = self._make_safe_insertion_pose()
+        request.use_start = True
+
+        send_future = self.compute_path_client.send_goal_async(request)
+        send_future.add_done_callback(
+            lambda future: self._nav2_path_goal_response(
+                future,
+                event,
+                rescue_goal,
+                fallback_path,
+            )
+        )
+        self._publish_status(
+            'nav2_path_requested '
+            f'x={rescue_goal.pose.position.x:.2f} y={rescue_goal.pose.position.y:.2f}'
+        )
+
+    def _nav2_path_goal_response(
+        self,
+        future,
+        event: HostageEvent,
+        rescue_goal: PoseStamped,
+        fallback_path: Path,
+    ) -> None:
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self._publish_status('nav2_path_rejected_by_server')
+            if self.fallback_to_straight_path:
+                self._approve_candidate(event, rescue_goal, fallback_path, planner='straight_fallback')
+            return
+
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(
+            lambda done: self._nav2_path_result(
+                done,
+                event,
+                rescue_goal,
+                fallback_path,
+            )
+        )
+
+    def _nav2_path_result(
+        self,
+        future,
+        event: HostageEvent,
+        rescue_goal: PoseStamped,
+        fallback_path: Path,
+    ) -> None:
+        result = future.result().result
+        path = result.path
+        if path.poses:
+            self._approve_candidate(event, rescue_goal, path, planner='nav2')
+            return
+
+        self._publish_status('nav2_path_empty')
+        if self.fallback_to_straight_path:
+            self._approve_candidate(event, rescue_goal, fallback_path, planner='straight_fallback')
+
+    def _approve_candidate(
+        self,
+        event: HostageEvent,
+        rescue_goal: PoseStamped,
+        path: Path,
+        planner: str,
+    ) -> None:
         valid_path, path_reason = self._validate_path(path)
         if not valid_path:
-            self._publish_status(f'rejected_candidate_path reason={path_reason}')
+            self._publish_status(f'rejected_candidate_path reason={path_reason} planner={planner}')
             return
 
         self._remember_event(event)
@@ -198,21 +312,9 @@ class RescueCoordinator(Node):
         self.rescue_goal_pub.publish(rescue_goal)
         self._publish_status(
             'rescue_goal_validated '
-            f'marker_id={event.marker_id} detecting_robot={event.detecting_robot} '
+            f'planner={planner} marker_id={event.marker_id} '
+            f'detecting_robot={event.detecting_robot} '
             f'x={rescue_goal.pose.position.x:.2f} y={rescue_goal.pose.position.y:.2f}'
-        )
-
-    def _ai_waypoint_callback(self, waypoint: PoseStamped) -> None:
-        valid, reason = self._validate_pose_stamped(waypoint, require_map=True)
-        if not valid:
-            self._publish_status(f'rejected_ai_waypoint reason={reason}')
-            return
-
-        self.validated_waypoint_pub.publish(waypoint)
-        self.rescue_goal_pub.publish(waypoint)
-        self._publish_status(
-            'ai_waypoint_validated dispatch_requested '
-            f'x={waypoint.pose.position.x:.2f} y={waypoint.pose.position.y:.2f}'
         )
 
     def _map_callback(self, msg: OccupancyGrid) -> None:
@@ -337,6 +439,15 @@ class RescueCoordinator(Node):
 
         path.poses[-1] = goal
         return path
+
+    def _make_safe_insertion_pose(self) -> PoseStamped:
+        start = PoseStamped()
+        start.header.stamp = self.get_clock().now().to_msg()
+        start.header.frame_id = self.global_frame
+        start.pose.position.x = self.safe_insertion_x
+        start.pose.position.y = self.safe_insertion_y
+        self._set_yaw(start.pose, self.safe_insertion_yaw)
+        return start
 
     def _pose_is_accessible(self, x: float, y: float) -> bool:
         if self.latest_map is None:

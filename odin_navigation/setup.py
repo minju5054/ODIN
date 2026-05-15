@@ -26,6 +26,9 @@ setup(
         'console_scripts': [
             'robot_3_spawn_on_goal = odin_navigation.robot_3_spawn_on_goal:main',
             'simple_goal_follower = odin_navigation.simple_goal_follower:main',
+            'nav2_goal_dispatcher = odin_navigation.nav2_goal_dispatcher:main',
+            'mission_success_marker = odin_navigation.mission_success_marker:main',
+            'mission_success_popup = odin_navigation.mission_success_popup:main',
         ],
     },
 )
