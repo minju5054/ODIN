@@ -2,272 +2,332 @@
 
 ODIN은 ROS 2 Humble과 Gazebo Classic 11 기반의 멀티로봇 전술 인질 구출 시뮬레이션 프로젝트입니다.
 
-현재 단계의 목표는 두 대의 scout 로봇이 20 m x 20 m 전술 arena를 정찰하면서 각자 SLAM을 수행하고, odom과 LiDAR scan을 이용해 하나의 `/merged_map`을 안정적으로 생성하는 것입니다. 오른쪽 위 구역은 적 요충지로 가정하며, scout 로봇은 해당 위험 구역을 직접 공략하지 않고 인질이 있을 가능성이 높은 중앙 구역으로 서서히 좁혀 들어가는 방식으로 수색합니다.
+두 대의 scout 로봇이 전술 arena를 정찰하며 SLAM과 map merge를 수행하고, ArUco marker로 표현된 인질을 발견하면 coordinator가 rescue 후보 경로를 생성합니다. Qwen 기반 AI 노드는 미션 상황과 후보 경로를 평가해 rescue 정책과 최종 경로를 선택하며, 최종 제어 권한은 coordinator와 `robot_3` Nav2 stack이 담당합니다.
 
-각 로봇은 namespace로 분리되어 있으며, 이후 Jetson 기반 분산 환경으로 확장할 수 있는 구조를 전제로 합니다.
+이 프로젝트는 단일 PC 시뮬레이션에서 시작하지만, 각 기능을 ROS 2 package와 topic 단위로 분리하여 Jetson 기반 분산 실행으로 확장할 수 있도록 구성되어 있습니다.
+
+## 프로젝트 목표
+
+- Gazebo Classic 기반 전술 인질 구출 시나리오 구현
+- `robot_1`, `robot_2` scout 로봇의 독립 SLAM 및 map merge
+- ArUco marker 기반 hostage event 발행
+- coordinator 기반 event 검증, 후보 경로 생성, rescue dispatch
+- Qwen 기반 mission policy 선택 및 경로 선택
+- `robot_3` Nav2 기반 rescue 이동
+- GUI를 통한 mission intent 입력, Qwen 의사결정, route visualization, mission status 표시
+- 추후 Jetson 분산 환경으로 확장 가능한 ROS 2 구조 유지
 
 ## 전장 시나리오
 
-- 전장 맵은 20 m x 20 m 평면 arena입니다.
-- 적 요충지는 맵 오른쪽 위 구역입니다.
-- 맵 C에는 오른쪽 위에 enemy stronghold, sentry post, barricade, red zone marker, visual-only vision ray가 배치되어 있습니다.
-- `robot_1`, `robot_2`는 scout 로봇으로, 적 요충지를 피하면서 주변을 정찰하고 인질 가능 구역으로 맵을 확장합니다.
-- scout 주행은 중앙 인질 후보 구역을 향해 점진적으로 좁혀 들어가는 center-spiral bias를 사용합니다.
-- ArUco ID `0`은 hostage surrogate입니다. 현재 월드 C의 중앙 벽에 visual marker로 배치되어 있습니다.
-- coordinator는 `/merged_map`, hostage event, robot state를 바탕으로 `robot_3` 침투 경로 후보를 생성합니다.
-- Qwen/VLM은 지도, 적 요충지, red zone, 후보 경로를 보고 적 시야망을 피하는 경로를 평가하거나 추천합니다.
-- 최종 dispatch 권한은 coordinator가 가지며, Qwen은 직접 로봇을 제어하지 않습니다.
-- `robot_3`는 초기에는 왼쪽 아래 safe insertion point에서 spawn된다고 가정합니다.
+기본 월드는 20 m x 20 m 평면 arena입니다.
 
-## 현재 구현 상태
+- 오른쪽 위 구역은 enemy stronghold입니다.
+- scout 로봇은 위험 구역을 직접 공략하지 않고 hostage 후보 구역을 중심으로 정찰합니다.
+- ArUco ID `0`은 hostage surrogate입니다.
+- `robot_1`, `robot_2`는 scout 역할로 SLAM과 탐색을 수행합니다.
+- `robot_3`는 rescue 역할로, coordinator dispatch 전에는 이동하지 않습니다.
+- Qwen은 작전 의도를 해석해 rescue 정책을 선택하고, 후보 경로 중 하나를 추천합니다.
+- coordinator는 Qwen 결과를 그대로 실행하지 않고, ROS frame, 좌표, map, 위험 구역, robot 상태를 검증한 뒤 dispatch합니다.
 
-- Gazebo Classic에서 전술 월드 C를 실행합니다.
-- `robot_1`, `robot_2` 두 scout 로봇을 서로 다른 namespace로 spawn합니다.
-- 각 scout 로봇은 `slam_toolbox`로 독립 SLAM을 수행합니다.
-- `odin_map_merge`는 `/robot_1/scan`, `/robot_1/odom`, `/robot_2/scan`, `/robot_2/odom`을 이용해 `/merged_map`을 생성합니다.
-- merged map에서는 로봇끼리 서로 LiDAR에 감지되어 장애물로 남는 현상을 줄이기 위해 robot footprint와 robot-on-robot scan hit를 필터링합니다.
-- `odin_exploration`은 reactive gap-following과 center-spiral bias를 이용해 scout 로봇을 자동 주행시킵니다.
-- `odin_detection`은 Gazebo world state 기반으로 ArUco ID `0` hostage surrogate 감지 조건을 판단하고 `/hostage_events`를 발행합니다.
-- `odin_coordinator`는 hostage event, `/merged_map`, robot odom을 구독해 중복 event, frame, 좌표, map 접근성, robot_3 availability를 검증하고 rescue 후보 경로를 생성합니다. 공유 전장 규칙을 읽어 candidate path, rescue goal, AI waypoint가 Red Zone 또는 적 시야망 hard-reject 영역에 들어가는 경우 fail-safe 방식으로 거절합니다.
-- `odin_ai`는 Qwen/VLM 연결 전 local heuristic fallback으로 `/coordinator/candidate_path`를 보고 공유된 전장 규칙(`battlefield_rules.yaml`)을 바탕으로 Red Zone과 적 시야망을 능동적으로 회피하는 안전한 `/ai/waypoint_recommendation`을 발행합니다.
-- `robot_3`는 시작 시 바로 spawn되지 않고, coordinator가 검증한 `/robot_3/goal_pose`가 발행된 뒤 왼쪽 아래 safe insertion point에 spawn되어 dispatch를 시작합니다.
-- `odin_bringup`은 공유 전장 규칙 파일 `battlefield_rules.yaml`을 제공하며, map bounds, robot spawn pose, `robot_3` safe insertion point, 중앙 hostage 후보 구역, 오른쪽 위 enemy stronghold Red Zone, 적 시야망 영역을 config로 관리합니다.
-- 전장 정보(맵 바운더리, 스폰 좌표, 적 요충지 Red Zone, 적 시야망 Vision Cone 등)는 `battlefield_rules.yaml`로 명시적 데이터화되어 시스템 전반에 공유됩니다.
-- `sim_multi_slam_map_merge.launch.py`는 shared battlefield config를 coordinator와 local AI fallback에 전달하여 Qwen 연결 전에도 동일한 전술 규칙 기반 pipeline을 테스트할 수 있습니다.
+## 전체 동작 흐름
 
-## 앞으로 구현할 목록
+```text
+Mission Intent GUI
+  -> /mission/intent
+  -> Qwen policy selection
+  -> /ai/mission_policy
 
-1. Qwen/VLM 실제 연결
-   - Qwen/VLM 노드는 `/merged_map`, 전장 규칙 config, 적 요충지/시야망, `/coordinator/candidate_path`, `robot_3` 초기 위치를 입력으로 받습니다.
-   - Qwen/VLM은 전술 overlay 이미지 또는 구조화된 coordinate/context 입력을 기반으로 후보 waypoint의 위험도를 평가합니다.
-   - Qwen/VLM 출력은 coordinator가 검증할 수 있는 `/ai/waypoint_recommendation` 또는 합의된 JSON schema로 제한합니다.
-   - Qwen/VLM은 직접 `/cmd_vel`, `/robot_3/goal_pose`를 발행하지 않습니다.
-   - 기존 local heuristic fallback과 같은 topic contract를 유지하여 Qwen 연결 실패 시 fallback이 가능하게 합니다.
+robot_1, robot_2
+  -> scout exploration
+  -> per-robot SLAM
+  -> /robot_1/map, /robot_2/map
+  -> /merged_map
 
-2. robot_3 dispatch 고도화
-   - 현재는 coordinator가 검증한 `/robot_3/goal_pose`를 기준으로 `robot_3`를 safe insertion point에서 spawn하고 simple goal follower로 이동합니다.
-   - 다음 단계에서는 merged map 기반 global path validation과 obstacle-aware path planning을 강화합니다.
-   - `robot_3`는 SLAM을 수행하지 않고, 알려진 초기 위치와 merged map 기반 경로를 사용합니다.
-   - 이후 확장으로 `y = -x` 영역의 랜덤 safe insertion point를 지원합니다.
-   - 장기적으로는 simple goal follower를 Nav2 기반 dispatch로 교체하거나 통합합니다.
+ArUco detection
+  -> /hostage_events
 
-3. 전장 규칙 고도화
-   - 오른쪽 위 enemy stronghold는 `battlefield_rules.yaml`의 explicit Red Zone으로 관리됩니다.
-   - 현재 enemy vision zone은 원형 hard-reject 영역으로 config화되어 있으며, 이후 cone/FOV 기반 위험 영역으로 확장합니다.
-   - coordinator와 local AI fallback은 같은 전장 규칙 config를 사용합니다.
-   - 다음 단계에서는 scout 로봇이 Red Zone 직접 진입을 더 적극적으로 피하도록 exploration bias와 boundary avoidance를 강화합니다.
-   - Qwen/VLM overlay renderer는 같은 config를 사용해 Red Box, Red Circle/Cone, robot 위치, 후보 waypoint, hostage marker를 시각화합니다.
+coordinator
+  -> event validation
+  -> candidate route generation
+  -> /coordinator/candidate_routes
 
-## 개발 환경
+Qwen planner
+  -> route evaluation
+  -> /ai/selected_path
+  -> /ai/waypoint_recommendation
 
-- Ubuntu 22.04
-- ROS 2 Humble
-- Gazebo Classic 11
-- Python 3.10
-- TurtleBot3 Gazebo 패키지
+coordinator
+  -> waypoint validation
+  -> /robot_3/spawn_trigger
+  -> /robot_3/goal_pose
 
-작업 경로:
-
-```bash
-/home/odin/robotics_ws/ros2_ws
-└── src
-    └── odin_rescue
+robot_3 Nav2
+  -> selected path following
+  -> mission success
 ```
+
+## Mission Policy
+
+미션 시작 전에 GUI에서 자연어로 작전 상황을 입력합니다. Qwen은 입력 문장을 기반으로 다음 정책 중 하나를 선택합니다.
+
+- `FAST_RESCUE`: 인질 생존 시간이 중요하여 신속한 rescue를 우선합니다.
+- `SAFE_RESCUE`: 정찰된 영역과 map 안정성을 우선합니다.
+- `STEALTH_RESCUE`: enemy stronghold와 적 시야망 회피를 우선합니다.
+
+정책 선택 이후 scout 주행이 시작됩니다. 즉, 사용자가 intent를 전송하기 전에는 scout 로봇이 대기합니다.
+
+Qwen이 사용할 수 없거나 응답이 유효하지 않은 경우에도 같은 ROS topic contract를 유지해 전체 rescue pipeline이 중단되지 않도록 구성되어 있습니다.
+
+## GUI 구성
+
+현재 데모는 다음 GUI를 사용합니다.
+
+- `Mission Intent`: 사용자가 작전 상황을 입력하고 Qwen에게 정책 선택을 요청합니다.
+- `ODIN Coordinator / Qwen Dialog`: coordinator와 Qwen 사이의 request, response, dispatch log를 표시합니다.
+- `ODIN Qwen Route Decision`: merged map 위에 후보 경로, Qwen 선택 경로, hostage 위치, robot_3 trail, enemy area overlay를 표시합니다.
+- `ODIN Mission Timeline`: `SCOUTING`, `ROBOT DETECT HOSTAGE`, `COORDINATOR VALIDATING`, `ROBOT3 DISPATCH`, `MISSION SUCCESS` 흐름을 표시합니다.
+- `Mission Success Popup`: rescue 완료 시 별도 성공 팝업을 표시합니다.
 
 ## 패키지 구조
 
 ### `odin_bringup`
 
-전체 시스템 실행을 담당하는 상위 launch 패키지입니다.
+전체 시뮬레이션을 실행하는 상위 launch 패키지입니다.
 
-- `sim_multi_slam_map_merge.launch.py`: Gazebo, robot별 SLAM, merged map 노드, scout 주행 노드를 함께 실행합니다.
-- `multi_slam_map_merge.launch.py`: Gazebo 없이 SLAM과 map merge만 실행합니다.
+- `sim_multi_slam_map_merge.launch.py`
+  - Gazebo
+  - scout SLAM
+  - map merge
+  - exploration
+  - RGB ArUco detection
+  - coordinator
+  - Qwen planner
+  - robot_3 Nav2 dispatch
+  - GUI panels
+
+- `multi_slam_map_merge.launch.py`
+  - Gazebo 없이 SLAM과 map merge 관련 노드만 실행합니다.
 
 ### `odin_gazebo`
 
-Gazebo world와 로봇 spawn을 담당합니다.
+Gazebo world와 robot spawn을 담당합니다.
 
-- `house_easier_three_robots.launch.py`: 현재는 `robot_1`, `robot_2` 두 대만 spawn합니다.
-- `worlds/odin_rescue_20x20_c.world`: 기본 전술 맵 C입니다. 20x20 평면 구조에 오른쪽 위 적 요충지 오브젝트와 ArUco hostage marker가 포함되어 있습니다.
+- `worlds/odin_rescue_20x20_c.world`
+  - 기본 전술 arena
+  - enemy stronghold
+  - obstacle layout
+  - hostage ArUco marker
 
-현재 scout robot spawn pose:
+- `house_easier_three_robots.launch.py`
+  - scout 로봇을 알려진 초기 위치에 spawn합니다.
+  - `robot_3`는 rescue phase에서 별도 spawn됩니다.
 
-- `robot_1`: `x=-7.5`, `y=7.5`, `yaw=-1.5708`
-- `robot_2`: `x=7.5`, `y=-7.5`, `yaw=1.5708`
+### `odin_description`
+
+로봇 모델, URDF/Xacro, 센서 구성을 담당합니다.
+
+- scout 로봇은 LiDAR와 RGB camera를 사용합니다.
+- RGB camera는 ArUco marker detection에 사용됩니다.
 
 ### `odin_slam`
 
 로봇별 `slam_toolbox` 실행을 담당합니다.
 
-- `multi_slam.launch.py`: `robot_1`, `robot_2` namespace 아래에 각각 `async_slam_toolbox_node`를 실행합니다.
-- `config/slam_toolbox.yaml`: 2D 시뮬레이션 SLAM용 설정 파일입니다.
-
-주요 map topic:
-
-- `/robot_1/map`
-- `/robot_2/map`
+- `robot_1`, `robot_2`는 각 namespace 아래에서 독립적으로 SLAM을 수행합니다.
+- 주요 topic:
+  - `/robot_1/map`
+  - `/robot_2/map`
 
 ### `odin_map_merge`
 
-현재 프로젝트에서 사용하는 merged map 생성 패키지입니다.
+Scout 로봇의 odom과 scan 정보를 이용해 `/merged_map`을 생성합니다.
 
-현재 고정 방식은 `merge_B`입니다.
+- 주요 입력:
+  - `/robot_1/odom`
+  - `/robot_1/scan`
+  - `/robot_2/odom`
+  - `/robot_2/scan`
 
-- `scenario_scan_map_merge.py`
-- `scenario_scan_map_merge.launch.py`
-- `config/scenario_scan_map_merge.yaml`
+- 주요 출력:
+  - `/merged_map`
 
-이 노드는 다음 topic을 구독합니다.
-
-- `/robot_1/odom`
-- `/robot_1/scan`
-- `/robot_2/odom`
-- `/robot_2/scan`
-
-그리고 다음 topic을 발행합니다.
-
-- `/merged_map`
-
-`/merged_map`은 20 m x 20 m 전역 occupancy grid에 각 로봇의 scan을 직접 누적해서 생성합니다. 또한 다른 로봇이 LiDAR에 감지됐을 때 merged map에 장애물로 남지 않도록 robot footprint와 robot-on-robot scan hit를 필터링합니다.
+Merged map은 coordinator, Qwen route visualization, robot_3 navigation context에 사용됩니다.
 
 ### `odin_exploration`
 
-SLAM coverage를 위한 간단한 scout 자율 주행 패키지입니다.
+Scout 로봇의 자동 탐색 주행을 담당합니다.
 
-- `reactive_scout.py`: LiDAR 기반 gap-following, escape behavior, center-spiral bias를 포함한 주행 노드입니다.
-- `reactive_scouts.launch.py`: `robot_1`, `robot_2` namespace 아래에 scout 주행 노드를 실행합니다.
+- `reactive_scout.py`
+  - LiDAR 기반 reactive navigation
+  - 장애물 회피
+  - event 이후 추가 map coverage 유도
+  - enemy stronghold 접근 억제
 
-현재 scout 주행 규칙:
+- `reactive_scouts.launch.py`
+  - `robot_1`, `robot_2` namespace 아래에 scout node를 실행합니다.
 
-- `robot_1`은 왼쪽 위에서 아래 방향으로 출발합니다.
-- `robot_2`는 오른쪽 아래에서 위 방향으로 출발합니다.
-- 두 로봇은 중앙 근처에 hostage가 있다고 가정하고, 장애물 회피를 유지하면서 중앙으로 서서히 좁혀 들어가는 방향 bias를 받습니다.
-- 오른쪽 위 enemy stronghold는 현재 Gazebo world와 시나리오에서 위험 구역으로 취급합니다.
+Scout 로봇은 mission policy가 선택되기 전까지 대기합니다.
 
 ### `odin_detection`
 
-Gazebo 기반 ArUco hostage event 발행 패키지입니다.
+ArUco hostage event 발행을 담당합니다.
 
-- `gazebo_aruco_event_detector.py`: `/model_states`에서 scout 로봇과 `hostage_aruco_marker_0` 위치를 확인하고, 감지 거리/FOV 조건이 맞으면 event를 발행합니다.
-- `gazebo_aruco_event_detector.launch.py`: detector 노드를 실행합니다.
-- `config/gazebo_aruco_event_detector.yaml`: marker id, 대상 scout robot, 감지 거리, 감지 FOV, event topic을 설정합니다.
+- `rgb_aruco_event_detector.py`
+  - RGB camera image에서 ArUco ID `0`을 감지합니다.
+  - 벽 뒤 감지처럼 시나리오상 부적절한 event를 줄이기 위해 visibility 조건을 함께 확인합니다.
+  - 동일 marker event가 반복 발행되지 않도록 관리합니다.
 
-발행 topic:
+- `gazebo_aruco_event_detector.py`
+  - Gazebo state 기반 detector입니다.
+  - RGB detector를 보조하거나 테스트할 때 사용할 수 있습니다.
+
+주요 출력:
 
 - `/hostage_events`
 
-event에는 다음 정보가 포함됩니다.
-
-- marker id
-- 감지 로봇 이름
-- 추정 좌표 pose
-- frame id
-- timestamp
-
 ### `odin_coordinator`
 
-Hostage event 검증과 `robot_3` rescue 후보 생성을 담당합니다.
+Hostage event 검증, candidate route 생성, AI waypoint 검증, robot_3 dispatch를 담당합니다.
 
-- `rescue_coordinator.py`: `/hostage_events`, `/merged_map`, `/robot_1/odom`, `/robot_2/odom`, `/robot_3/odom`을 구독합니다.
-- 중복 event, frame id, 좌표 범위, quaternion validity, map 접근성, robot_3 availability를 검증합니다.
-- 왼쪽 아래 safe insertion point에서 hostage marker 근처 standoff goal까지의 후보 path를 생성합니다.
-- Qwen/VLM waypoint는 `/ai/waypoint_recommendation`으로 받고, 검증을 통과한 경우에만 `/coordinator/validated_waypoint`로 발행합니다.
+주요 입력:
 
-주요 topic:
+- `/hostage_events`
+- `/merged_map`
+- `/robot_1/odom`
+- `/robot_2/odom`
+- `/robot_3/odom`
+- `/ai/mission_policy`
+- `/ai/waypoint_recommendation`
+
+주요 출력:
 
 - `/coordinator/status`
 - `/coordinator/candidate_path`
+- `/coordinator/candidate_routes`
 - `/coordinator/validated_waypoint`
+- `/robot_3/spawn_trigger`
 - `/robot_3/goal_pose`
+
+Coordinator는 Qwen이 선택한 경로를 그대로 실행하지 않고, frame, 좌표, map accessibility, duplicate event, robot availability, 위험 구역 여부를 검증한 뒤 robot_3를 dispatch합니다.
 
 ### `odin_ai`
 
-Qwen/VLM 연결 전까지 사용하는 local heuristic fallback입니다.
+Qwen 기반 mission policy 선택과 route selection을 담당합니다.
 
-- `heuristic_waypoint_recommender.py`: `/coordinator/candidate_path`와 `/merged_map`을 구독합니다.
-- 후보 경로의 goal 쪽 waypoint를 추천하고 `/ai/waypoint_recommendation`으로 발행합니다.
-- 실제 로봇 제어 topic은 발행하지 않습니다.
+- `mission_intent_panel.py`
+  - 미션 시작 전 사용자의 자연어 intent를 입력받습니다.
 
-Jetson Nano의 Qwen/VLM을 붙일 때는 이 fallback 노드 대신 같은 타입의 `/ai/waypoint_recommendation` publisher를 구현하면 됩니다.
+- `virtual_qwen_planner.py`
+  - `/mission/intent`를 받아 Qwen에게 rescue policy 선택을 요청합니다.
+  - `/coordinator/candidate_routes`와 `/merged_map`을 기반으로 후보 경로를 압축해 Qwen에게 전달합니다.
+  - Qwen 선택 결과를 `/ai/selected_path`와 `/ai/waypoint_recommendation`으로 발행합니다.
+  - Qwen 연결 상태와 무관하게 동일한 ROS topic interface를 유지합니다.
 
-### `robot_3` Dispatch
+Qwen은 직접 `/cmd_vel` 또는 `/robot_3/goal_pose`를 발행하지 않습니다.
 
-초기 구현은 Nav2가 아닌 보수적인 goal follower입니다.
+### `odin_navigation`
 
-- `robot_3`는 시작 시 Gazebo에 spawn되지 않으며 SLAM과 scout exploration을 수행하지 않습니다.
-- `/robot_3/goal_pose`가 들어오면 spawn manager가 Gazebo에 `robot_3`를 생성하고, follower가 같은 goal을 따라갑니다.
-- `simple_goal_follower.py`는 `/robot_3/odom`, `/robot_3/scan`, `/robot_3/goal_pose`를 구독하고 `/robot_3/cmd_vel`을 발행합니다.
-- 전방 장애물이 가까우면 정지하고 `/robot_3/dispatch_status`에 상태를 발행합니다.
+`robot_3` spawn, Nav2 dispatch, mission GUI를 담당합니다.
 
-### 향후 추가 예정 패키지
+- `robot_3_spawn_on_goal.py`
+  - coordinator의 spawn trigger를 받아 Gazebo에 `robot_3`를 생성합니다.
 
-다음 패키지는 이후 milestone에서 추가할 예정입니다.
+- `nav2_goal_dispatcher.py`
+  - coordinator가 검증한 goal과 Qwen이 선택한 selected path를 Nav2 goal sequence로 전달합니다.
 
-- `odin_ai`: Qwen/VLM 기반 경로 후보 평가 또는 위험 구역 판단 보조
+- `robot_scan_filter.py`
+  - robot_3 Nav2 costmap에 들어가는 scan을 정리합니다.
+  - scout 로봇이 robot_3의 동적 장애물로 과도하게 반영되는 현상을 줄입니다.
 
-### 참고용 패키지
+- `mission_success_marker.py`
+  - mission success 상태와 RViz marker를 발행합니다.
 
-다음 패키지들은 현재 기본 실행 경로에는 포함되지 않지만, 실험 및 참고용으로 남겨져 있습니다.
+- `mission_status_panel.py`
+  - mission timeline GUI입니다.
 
-- `multirobot_map_merge`
-- `explore_lite`
-- `explore_lite_msgs`
-- `odin_navigation`
+- `qwen_dialog_panel.py`
+  - coordinator와 Qwen의 대화 log GUI입니다.
 
-이전에 실험한 A/C/D map merge 방식은 프로젝트 패키지에서 제거하고 아래 위치에 따로 보관했습니다.
+- `qwen_route_map_panel.py`
+  - route decision map GUI입니다.
+
+## 주요 Topic
+
+### Scout
+
+- `/robot_1/scan`
+- `/robot_1/odom`
+- `/robot_1/cmd_vel`
+- `/robot_1/map`
+- `/robot_2/scan`
+- `/robot_2/odom`
+- `/robot_2/cmd_vel`
+- `/robot_2/map`
+
+### Map
+
+- `/merged_map`
+
+### Detection
+
+- `/hostage_events`
+
+### Coordinator
+
+- `/coordinator/status`
+- `/coordinator/candidate_path`
+- `/coordinator/candidate_routes`
+- `/coordinator/validated_waypoint`
+
+### AI
+
+- `/mission/intent`
+- `/ai/mission_policy`
+- `/ai/status`
+- `/ai/selected_path`
+- `/ai/waypoint_recommendation`
+
+### Robot 3
+
+- `/robot_3/spawn_trigger`
+- `/robot_3/goal_pose`
+- `/robot_3/scan`
+- `/robot_3/scan_nav2`
+- `/robot_3/odom`
+- `/robot_3/cmd_vel`
+- `/robot_3/dispatch_status`
+
+### Mission UI
+
+- `/mission_status`
+- `/mission_marker`
+
+## Qwen Jetson 연결
+
+Qwen은 OpenAI-compatible Chat Completions endpoint를 제공하는 `llama.cpp` server로 연결합니다.
+
+예시:
 
 ```bash
-/home/odin/robotics_ws/ros2_ws/odin_rescue_map_merge_archive
+llama-server \
+  -m ~/Qwen3-VL-4B-Instruct-Q4_K_M.gguf \
+  --mmproj ~/Qwen3-VL-4B-Instruct-mmproj.gguf \
+  --host 0.0.0.0 \
+  --port 8081 \
+  --ctx-size 1024 \
+  --gpu-layers 0 \
+  --no-mmproj-offload \
+  --jinja \
+  --reasoning off
 ```
 
-## 주요 노드와 함수
-
-### `ScenarioScanMapMerge`
-
-파일:
+노트북에서 health check:
 
 ```bash
-odin_map_merge/odin_map_merge/scenario_scan_map_merge.py
+curl http://<JETSON_IP>:8081/health
 ```
 
-역할:
-
-- 로봇별 `/odom`과 `/scan`을 받아 전역 `/merged_map`을 생성합니다.
-- 현재 구현은 map size를 알고 있는 scenario 기반 방식입니다.
-- 다른 로봇이 장애물처럼 merged map에 찍히지 않도록 필터링합니다.
-
-주요 함수:
-
-- `_odom_callback`: `/robot_i/odom`에서 각 로봇의 현재 위치와 yaw를 저장합니다.
-- `_scan_callback`: LiDAR scan endpoint를 전역 grid cell로 변환하고 free/occupied cell을 갱신합니다.
-- `_is_other_robot_hit`: scan hit가 다른 로봇 위치 근처이면 occupied로 찍지 않도록 판단합니다.
-- `_clear_robot_footprints`: publish 전 각 로봇 현재 위치 주변을 free로 지웁니다.
-- `_raytrace_free`: LiDAR ray가 지나간 cell을 free로 표시합니다.
-- `_publish_map`: 최종 `/merged_map`을 발행합니다.
-
-### `ReactiveScout`
-
-파일:
-
-```bash
-odin_exploration/odin_exploration/reactive_scout.py
-```
-
-역할:
-
-- 로봇별 `/scan`, `/odom`을 이용해 `/cmd_vel`을 발행합니다.
-- 기본적으로 LiDAR gap-following 방식으로 장애물을 피합니다.
-- 너무 가까운 장애물이 있으면 후진 및 회전 escape behavior를 수행합니다.
-- 중앙 hostage 후보 구역 가정을 반영한 center-spiral bias를 추가로 적용합니다.
-
-주요 함수:
-
-- `_scan_callback`: scan에서 전방/좌측/우측 거리와 열린 gap 후보를 계산합니다.
-- `_control_loop`: 현재 mode와 scan 상태를 바탕으로 속도 명령을 생성합니다.
-- `_best_gap_angle`: 가장 안전하게 진행할 수 있는 열린 방향을 선택합니다.
-- `_enter_escape`: 장애물에 너무 가까울 때 후진 및 회전 mode로 진입합니다.
-- `_apply_center_spiral_bias`: 중앙 hostage 후보 구역을 향해 서서히 좁혀 들어가는 방향 bias를 추가합니다.
-- `_odom_callback`: center-spiral 계산에 사용할 현재 odom pose를 저장합니다.
+프로젝트의 기본 Qwen API URL은 `odin_ai/config/virtual_qwen_planner.yaml`에서 수정할 수 있습니다.
 
 ## 빌드
 
@@ -276,22 +336,28 @@ workspace root에서 실행합니다.
 ```bash
 cd /home/odin/robotics_ws/ros2_ws
 colcon build --packages-select \
-  odin_gazebo \
-  odin_slam \
-  odin_map_merge \
-  odin_exploration \
-  odin_interfaces \
-  odin_detection \
-  odin_coordinator \
   odin_ai \
+  odin_bringup \
+  odin_coordinator \
+  odin_detection \
+  odin_exploration \
+  odin_gazebo \
+  odin_interfaces \
+  odin_map_merge \
   odin_navigation \
-  odin_bringup
+  odin_slam
 source install/setup.bash
+```
+
+개발 중 일부 패키지만 확인할 때:
+
+```bash
+colcon build --packages-select odin_ai odin_coordinator odin_navigation odin_bringup
 ```
 
 ## 실행
 
-전체 시뮬레이션 실행:
+전체 시뮬레이션:
 
 ```bash
 cd /home/odin/robotics_ws/ros2_ws
@@ -299,7 +365,7 @@ source install/setup.bash
 ros2 launch odin_bringup sim_multi_slam_map_merge.launch.py
 ```
 
-위 명령은 Gazebo, scout SLAM, `/merged_map`, scout 자율주행, Gazebo 기반 ArUco event detector, coordinator, local AI fallback, robot_3 dispatch follower를 함께 실행합니다.
+실행 후 `Mission Intent` GUI에서 작전 상황을 선택하거나 직접 입력하고 `Send Intent To Qwen`을 누르면 scout 로봇이 정찰을 시작합니다.
 
 Gazebo GUI 없이 실행:
 
@@ -307,65 +373,53 @@ Gazebo GUI 없이 실행:
 ros2 launch odin_bringup sim_multi_slam_map_merge.launch.py gui:=false
 ```
 
-감지 노드를 끄고 기존 자율주행 + merged map만 실행:
+Mission Intent GUI 없이 실행:
+
+```bash
+ros2 launch odin_bringup sim_multi_slam_map_merge.launch.py start_mission_intent_gui:=false
+```
+
+일부 기능 비활성화:
 
 ```bash
 ros2 launch odin_bringup sim_multi_slam_map_merge.launch.py start_detection:=false
-```
-
-coordinator를 끄고 실행:
-
-```bash
 ros2 launch odin_bringup sim_multi_slam_map_merge.launch.py start_coordinator:=false
-```
-
-local AI fallback 또는 robot_3 dispatch follower를 끄고 실행:
-
-```bash
 ros2 launch odin_bringup sim_multi_slam_map_merge.launch.py start_ai:=false
 ros2 launch odin_bringup sim_multi_slam_map_merge.launch.py start_robot_3_dispatch:=false
 ```
 
-SLAM과 merged map만 실행:
+SLAM과 map merge만 실행:
 
 ```bash
 ros2 launch odin_bringup multi_slam_map_merge.launch.py
 ```
 
-Gazebo와 로봇 spawn만 실행:
+## 수동 테스트 명령
+
+Mission intent 직접 발행:
 
 ```bash
-ros2 launch odin_gazebo house_easier_three_robots.launch.py
+ros2 topic pub --once /mission/intent std_msgs/msg/String "{data: '안전하게 구출해야 해. 이미 정찰된 경로를 우선해.'}"
 ```
 
-기본 실행은 맵 C를 사용합니다.
-
-ArUco detector만 별도 실행:
+Topic 확인:
 
 ```bash
-ros2 launch odin_detection gazebo_aruco_event_detector.launch.py
+ros2 topic list | grep -E 'mission|ai|coordinator|robot_3|hostage|merged_map'
+ros2 topic echo /ai/status
+ros2 topic echo /coordinator/status
+ros2 topic echo /robot_3/dispatch_status
 ```
 
-Coordinator만 별도 실행:
+Merged map 정보 확인:
 
 ```bash
-ros2 launch odin_coordinator rescue_coordinator.launch.py
+ros2 topic echo /merged_map --once --field info
 ```
 
 ## RViz 확인
 
-유용한 topic 확인:
-
-```bash
-ros2 topic list | grep -E 'robot_1|robot_2|merged_map'
-ros2 topic echo /merged_map --once --field info
-ros2 topic echo /hostage_events
-ros2 topic echo /coordinator/status
-ros2 topic echo /ai/status
-ros2 topic echo /robot_3/dispatch_status
-```
-
-RViz fixed frame:
+Fixed Frame:
 
 ```text
 map
@@ -376,18 +430,61 @@ map
 - `/merged_map`
 - `/robot_1/map`
 - `/robot_2/map`
-- `/hostage_events`
 - `/coordinator/candidate_path`
-- `/ai/waypoint_recommendation`
+- `/coordinator/candidate_routes`
+- `/ai/selected_path`
 - `/robot_3/goal_pose`
+- `/mission_marker`
+
+## 현재 완성된 기능
+
+- 전술 arena Gazebo world 실행
+- scout robot 2대 spawn
+- robot namespace 분리
+- `slam_toolbox` 기반 robot별 SLAM
+- odom/scan 기반 `/merged_map` 생성
+- RGB camera 기반 ArUco hostage detection
+- 중복 hostage event 방지
+- coordinator event validation
+- coordinator candidate route generation
+- Qwen mission policy selection
+- Qwen route selection
+- Qwen route decision GUI
+- coordinator/Qwen dialog GUI
+- robot_3 on-demand spawn
+- robot_3 Nav2 dispatch
+- robot_3 selected path following
+- robot_3 scan filtering for Nav2
+- Mission timeline GUI
+- Mission success popup
 
 ## 현재 제한 사항
 
-- `robot_3`는 검증된 dispatch goal이 발행된 뒤에만 spawn됩니다.
-- `/merged_map`은 scan 기반 scenario 방식이며, 20 m x 20 m 전역 map bounds를 사용합니다.
-- 개별 SLAM map(`/robot_i/map`)에는 다른 로봇이 동적 장애물로 남을 수 있습니다.
-- merged map에서는 robot footprint와 robot-on-robot scan hit를 필터링합니다.
-- ArUco detection은 현재 실제 카메라 영상 처리 대신 Gazebo world state 기반 감지 조건으로 event를 발행합니다.
-- robot_3 dispatch는 현재 단순 goal follower 기반이며, 복잡한 장애물 우회와 global planning은 이후 Nav2 통합에서 고도화합니다.
-- Qwen/VLM은 아직 Jetson Nano와 연결하지 않았고, 현재는 local heuristic fallback이 같은 topic 계약을 사용합니다.
-- enemy zone은 현재 Gazebo world에 시각/장애물 오브젝트로 표현되어 있으며, 이후 coordinator config에서 명시적인 red zone 좌표로도 관리할 예정입니다.
+- Gazebo simulation 중심 구현입니다.
+- 실제 Jetson 분산 배치는 네트워크와 ROS_DOMAIN_ID, RMW 설정을 추가로 맞춰야 합니다.
+- Scout 주행은 연구용 exploration stack이 아니라 데모 시나리오에 맞춘 lightweight reactive navigation입니다.
+- `/merged_map`은 현재 시나리오 world를 기준으로 안정성을 우선한 map merge 방식입니다.
+- ArUco marker는 hostage surrogate이며 실제 사람 인식 모델은 포함하지 않습니다.
+- Qwen은 정책 선택과 경로 선택을 보조하며, 최종 robot command 권한은 갖지 않습니다.
+- `robot_3`는 현재 rescue dispatch 역할에 집중하며 scout SLAM에는 참여하지 않습니다.
+
+## 확장 방향
+
+- Jetson별 namespace stack 분리 실행
+- ROS 2 DDS discovery 및 네트워크 설정 정리
+- Qwen/VLM 입력에 map image overlay 추가
+- enemy vision model 고도화
+- mission policy별 시나리오 확장
+- 실제 로봇 또는 Jetson Isaac/ROS 연동
+- `robot_3` spawn point 다양화
+- map merge 방식 일반화
+
+## 참고
+
+프로젝트는 다음 원칙을 유지합니다.
+
+- AI는 의사결정 보조 역할을 담당합니다.
+- coordinator가 최종 검증과 dispatch 권한을 가집니다.
+- 로봇 간 통신은 ROS 2 topic, service, action 기반으로 유지합니다.
+- 각 로봇 stack은 namespace로 분리합니다.
+- 추후 Jetson 분산 환경을 고려해 monolithic script 구조를 피합니다.
