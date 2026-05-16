@@ -257,6 +257,15 @@ class VirtualQwenPlanner(Node):
     ) -> Tuple[CandidateRoute, str, str]:
         local_best = min(selectable_routes, key=lambda route: route.score)
         local_mode = 'viable' if selectable_routes != all_routes else 'best_effort'
+        if self.mission_mode == 'STEALTH_RESCUE':
+            stealth_route = self._select_stealth_lower_left_upward(selectable_routes)
+            if stealth_route is not None:
+                return (
+                    stealth_route,
+                    f'stealth_lower_left_upward_{local_mode}',
+                    'qwen=stealth_rule_lower_left_upward',
+                )
+
         if not self.use_remote_qwen:
             return local_best, f'local_{local_mode}', 'qwen=disabled'
 
@@ -289,6 +298,50 @@ class VirtualQwenPlanner(Node):
             f'route={selected.name} reply={raw_reply.replace(" ", "_")[:220]}'
         )
         return selected, 'remote_qwen', 'qwen=ok'
+
+    def _select_stealth_lower_left_upward(
+        self,
+        routes: List[CandidateRoute],
+    ) -> Optional[CandidateRoute]:
+        upward_routes = []
+        lower_left_count = 0
+        for route in routes:
+            upward_gain = self._lower_left_upward_gain(route.path)
+            if upward_gain is None:
+                continue
+            lower_left_count += 1
+            if upward_gain <= 0.0:
+                continue
+            upward_routes.append((route, upward_gain))
+
+        if not upward_routes:
+            reason = (
+                'no_lower_left_waypoint_route'
+                if lower_left_count == 0
+                else 'no_lower_left_upward_route'
+            )
+            self._publish_status(f'stealth_rule_skipped reason={reason}')
+            return None
+        return max(upward_routes, key=lambda item: item[1])[0]
+
+    def _lower_left_upward_gain(self, path: Path) -> Optional[float]:
+        lower_left_x = self.map_min_x + (self.map_max_x - self.map_min_x) * 0.25
+        lower_left_y = self.map_min_y + (self.map_max_y - self.map_min_y) * 0.35
+        best_gain: Optional[float] = None
+        for index, pose in enumerate(path.poses):
+            point = pose.pose.position
+            if point.x > lower_left_x or point.y > lower_left_y:
+                continue
+            for next_pose in path.poses[index + 1:]:
+                next_point = next_pose.pose.position
+                if next_point.x > lower_left_x:
+                    continue
+                gain = next_point.y - point.y
+                if gain <= 0.5:
+                    continue
+                if best_gain is None or gain > best_gain:
+                    best_gain = gain
+        return best_gain
 
     def _select_mission_policy(self, intent: str) -> Tuple[str, str, str]:
         fallback_policy, fallback_reason = self._keyword_policy(intent)
@@ -420,7 +473,8 @@ class VirtualQwenPlanner(Node):
         return (
             f'mode={self.mission_mode}; '
             'score=w_len*length+w_unknown*unknown+w_occ*occupied+w_red*red+'
-            'w_vision*vision+w_turn*turn+w_fallback*fallback; '
+            'w_vision*vision+w_turn*turn+w_fallback*fallback+'
+            'w_red_clearance*red_clearance; '
             f'weights={json.dumps(self.score_weights, separators=(",", ":"))}; '
             f'start=({self.safe_insertion_x:.1f},{self.safe_insertion_y:.1f}); '
             f'hostage={hostage}. '
@@ -439,11 +493,6 @@ class VirtualQwenPlanner(Node):
             route for route in all_routes
             if route.name == 'planner_candidate'
         ]
-        if any(route.name == 'stealth_opposite_l_route' for route in all_routes):
-            prioritized = [
-                route for route in all_routes
-                if route.name == 'stealth_opposite_l_route'
-            ] + prioritized
         selected_ids = {id(route) for route in prioritized}
         remaining = sorted(
             all_routes,
@@ -480,6 +529,7 @@ class VirtualQwenPlanner(Node):
                 'red': int(route.metrics['red']),
                 'vision': int(route.metrics['vision']),
                 'turn': round(route.metrics['turn'], 2),
+                'red_clearance': round(route.metrics.get('red_clearance', 0.0), 2),
                 'fallback': int(route.metrics['fallback']),
             },
         }
@@ -489,7 +539,7 @@ class VirtualQwenPlanner(Node):
         wanted = []
         for item in reason.split(','):
             key = item.split('=', 1)[0]
-            if key in ('length', 'unknown', 'occupied', 'red', 'vision'):
+            if key in ('length', 'unknown', 'occupied', 'red', 'vision', 'red_clearance'):
                 wanted.append(item)
         return ','.join(wanted)
 
@@ -613,7 +663,7 @@ class VirtualQwenPlanner(Node):
             if not name.startswith('map_astar_'):
                 metrics['fallback'] = 1.0
                 score = self._score_metrics(metrics)
-                reason = f'{reason},fallback=1'
+                reason = self._reason_from_metrics(metrics)
             evaluated.append(
                 CandidateRoute(name=name, path=route_path, score=score, reason=reason, metrics=metrics)
             )
@@ -633,16 +683,6 @@ class VirtualQwenPlanner(Node):
             ('bottom_lane_then_goal', [(safe_x, bottom_lane_y), (goal_x, bottom_lane_y)]),
             ('staged_safe_arc', [(left_lane_x, safe_y), (left_lane_x, bottom_lane_y), (goal_x, bottom_lane_y)]),
         ]
-        if self.mission_mode == 'STEALTH_RESCUE':
-            opposite_x, opposite_y = self._enemy_opposite_point()
-            waypoints.insert(
-                0,
-                (
-                    'stealth_opposite_l_route',
-                    [(opposite_x, opposite_y), (goal_x, opposite_y)],
-                ),
-            )
-
         routes: List[Tuple[str, Path]] = []
         for name, points in waypoints:
             anchors = [start]
@@ -932,6 +972,8 @@ class VirtualQwenPlanner(Node):
         vision_hits = 0
         length = 0.0
         turn_cost = 0.0
+        red_clearance = 0.0
+        min_red_distance: Optional[float] = None
         previous_yaw = None
         previous_pose = None
 
@@ -953,6 +995,10 @@ class VirtualQwenPlanner(Node):
                 red_hits += 1
             if self._inside_enemy_vision_zone(x, y):
                 vision_hits += 1
+            red_distance = self._distance_to_nearest_red_zone(x, y)
+            if red_distance is not None:
+                if min_red_distance is None or red_distance < min_red_distance:
+                    min_red_distance = red_distance
 
             value = self._map_value_at(x, y)
             if value is None:
@@ -964,6 +1010,9 @@ class VirtualQwenPlanner(Node):
             elif value >= self.occupied_threshold:
                 occupied_cells += 1
 
+        if min_red_distance is not None:
+            red_clearance = min(min_red_distance, 8.0)
+
         metrics = {
             'length': length,
             'turn': turn_cost,
@@ -971,13 +1020,11 @@ class VirtualQwenPlanner(Node):
             'occupied': float(occupied_cells),
             'red': float(red_hits),
             'vision': float(vision_hits),
+            'red_clearance': red_clearance,
             'fallback': 0.0,
         }
         score = self._score_metrics(metrics)
-        reason = (
-            f'length={length:.2f},unknown={unknown_cells},occupied={occupied_cells},'
-            f'red={red_hits},vision={vision_hits},turn={turn_cost:.2f},fallback=0'
-        )
+        reason = self._reason_from_metrics(metrics)
         return score, reason
 
     def _score_metrics(self, metrics: Dict[str, float]) -> float:
@@ -988,7 +1035,21 @@ class VirtualQwenPlanner(Node):
             + self.score_weights['occupied'] * metrics.get('occupied', 0.0)
             + self.score_weights['red'] * metrics.get('red', 0.0)
             + self.score_weights['vision'] * metrics.get('vision', 0.0)
+            + self.score_weights.get('red_clearance', 0.0) * metrics.get('red_clearance', 0.0)
             + self.score_weights['fallback'] * metrics.get('fallback', 0.0)
+        )
+
+    @staticmethod
+    def _reason_from_metrics(metrics: Dict[str, float]) -> str:
+        return (
+            f'length={metrics.get("length", 0.0):.2f},'
+            f'unknown={int(metrics.get("unknown", 0.0))},'
+            f'occupied={int(metrics.get("occupied", 0.0))},'
+            f'red={int(metrics.get("red", 0.0))},'
+            f'vision={int(metrics.get("vision", 0.0))},'
+            f'turn={metrics.get("turn", 0.0):.2f},'
+            f'red_clearance={metrics.get("red_clearance", 0.0):.2f},'
+            f'fallback={int(metrics.get("fallback", 0.0))}'
         )
 
     def _set_mission_mode(self, mode: str) -> None:
@@ -1043,6 +1104,7 @@ class VirtualQwenPlanner(Node):
             'red': 0.0,
             'vision': 0.0,
             'turn': 0.0,
+            'red_clearance': 0.0,
             'fallback': 0.0,
         }
         for item in reason.split(','):
@@ -1061,12 +1123,13 @@ class VirtualQwenPlanner(Node):
     def _mission_weights(mode: str) -> Dict[str, float]:
         weight_sets = {
             'FAST_RESCUE': {
-                'length': 7.0,
-                'unknown': 1.0,
+                'length': 12.0,
+                'unknown': 0.5,
                 'occupied': 1000.0,
                 'red': 1000.0,
                 'vision': 450.0,
                 'turn': 0.1,
+                'red_clearance': 0.0,
                 'fallback': 80.0,
             },
             'SAFE_RESCUE': {
@@ -1076,6 +1139,7 @@ class VirtualQwenPlanner(Node):
                 'red': 1000.0,
                 'vision': 600.0,
                 'turn': 0.18,
+                'red_clearance': 0.0,
                 'fallback': 80.0,
             },
             'STEALTH_RESCUE': {
@@ -1085,6 +1149,7 @@ class VirtualQwenPlanner(Node):
                 'red': 1500.0,
                 'vision': 1200.0,
                 'turn': 0.2,
+                'red_clearance': -120.0,
                 'fallback': 80.0,
             },
             'BALANCED': {
@@ -1094,6 +1159,7 @@ class VirtualQwenPlanner(Node):
                 'red': 1000.0,
                 'vision': 600.0,
                 'turn': 0.18,
+                'red_clearance': 0.0,
                 'fallback': 80.0,
             },
         }
@@ -1194,6 +1260,18 @@ class VirtualQwenPlanner(Node):
             if zone.min_x <= x <= zone.max_x and zone.min_y <= y <= zone.max_y:
                 return True
         return False
+
+    def _distance_to_nearest_red_zone(self, x: float, y: float) -> Optional[float]:
+        nearest: Optional[float] = None
+        for zone in self.red_zones:
+            if not zone.hard_reject:
+                continue
+            dx = max(zone.min_x - x, 0.0, x - zone.max_x)
+            dy = max(zone.min_y - y, 0.0, y - zone.max_y)
+            distance = math.hypot(dx, dy)
+            if nearest is None or distance < nearest:
+                nearest = distance
+        return nearest
 
     def _inside_enemy_vision_zone(self, x: float, y: float) -> bool:
         for zone in self.enemy_vision_zones:

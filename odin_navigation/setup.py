@@ -33,6 +33,7 @@ setup(
             'qwen_route_map_panel = odin_navigation.qwen_route_map_panel:main',
             'qwen_dialog_panel = odin_navigation.qwen_dialog_panel:main',
             'robot_scan_filter = odin_navigation.robot_scan_filter:main',
+            'robot_3_speed_policy = odin_navigation.robot_3_speed_policy:main',
         ],
     },
 )

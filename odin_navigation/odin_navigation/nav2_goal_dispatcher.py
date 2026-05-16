@@ -26,11 +26,14 @@ class Nav2GoalDispatcher(Node):
         self.declare_parameter('follow_selected_path', True)
         self.declare_parameter('selected_path_waypoint_spacing_m', 1.0)
         self.declare_parameter('selected_path_goal_tolerance_m', 0.35)
+        self.declare_parameter('selected_path_sync_timeout_sec', 1.0)
 
         self.pending_goal: Optional[PoseStamped] = None
+        self.pending_final_goal: Optional[PoseStamped] = None
         self.pending_waypoints: List[PoseStamped] = []
         self.latest_selected_path: Optional[Path] = None
         self.goal_active = False
+        self.goal_wait_started_sec = 0.0
         self.last_feedback_time_sec = 0.0
         self.feedback_period_sec = float(self.get_parameter('feedback_period_sec').value)
         self.follow_selected_path = bool(self.get_parameter('follow_selected_path').value)
@@ -39,6 +42,9 @@ class Nav2GoalDispatcher(Node):
         )
         self.selected_path_goal_tolerance_m = float(
             self.get_parameter('selected_path_goal_tolerance_m').value
+        )
+        self.selected_path_sync_timeout_sec = float(
+            self.get_parameter('selected_path_sync_timeout_sec').value
         )
 
         self.status_pub = self.create_publisher(
@@ -75,24 +81,60 @@ class Nav2GoalDispatcher(Node):
             return
         self.latest_selected_path = msg
         self._publish_status(f'selected_path_cached waypoints={len(msg.poses)}')
+        if self.pending_final_goal is not None and not self.goal_active:
+            self._queue_selected_path_goal(self.pending_final_goal)
 
     def _goal_callback(self, msg: PoseStamped) -> None:
-        self.pending_waypoints = self._make_selected_path_waypoints(msg)
-        if self.pending_waypoints:
-            self.pending_goal = self.pending_waypoints.pop(0)
-            self._publish_status(
-                'selected_path_follow_queued '
-                f'waypoints_remaining={len(self.pending_waypoints) + 1} '
-                f'final_x={msg.pose.position.x:.2f} final_y={msg.pose.position.y:.2f}'
-            )
-        else:
-            self.pending_goal = msg
-            self._publish_status(
-                f'nav2_goal_queued x={msg.pose.position.x:.2f} y={msg.pose.position.y:.2f}'
-            )
+        self.pending_final_goal = msg
+        self.pending_goal = None
+        self.pending_waypoints = []
         self.goal_active = False
+        self.goal_wait_started_sec = self._now_sec()
+        if not self._queue_goal(msg, allow_wait=True):
+            self._publish_status(
+                'goal_waiting_for_selected_path '
+                f'timeout={self.selected_path_sync_timeout_sec:.2f} '
+                f'x={msg.pose.position.x:.2f} y={msg.pose.position.y:.2f}'
+            )
+
+    def _queue_goal(self, msg: PoseStamped, allow_wait: bool) -> bool:
+        if self._queue_selected_path_goal(msg):
+            return True
+
+        if allow_wait and self.follow_selected_path and self.selected_path_sync_timeout_sec > 0.0:
+            return False
+
+        self.pending_goal = msg
+        self.pending_final_goal = None
+        self._publish_status(
+            f'nav2_goal_queued x={msg.pose.position.x:.2f} y={msg.pose.position.y:.2f}'
+        )
+        return True
+
+    def _queue_selected_path_goal(self, msg: PoseStamped) -> bool:
+        self.pending_waypoints = self._make_selected_path_waypoints(msg)
+        if not self.pending_waypoints:
+            return False
+        self.pending_goal = self.pending_waypoints.pop(0)
+        self.pending_final_goal = None
+        self._publish_status(
+            'selected_path_follow_queued '
+            f'waypoints_remaining={len(self.pending_waypoints) + 1} '
+            f'final_x={msg.pose.position.x:.2f} final_y={msg.pose.position.y:.2f}'
+        )
+        return True
 
     def _dispatch_loop(self) -> None:
+        if self.pending_final_goal is not None and not self.goal_active:
+            elapsed = self._now_sec() - self.goal_wait_started_sec
+            if elapsed >= self.selected_path_sync_timeout_sec:
+                goal = self.pending_final_goal
+                self._publish_status(
+                    'selected_path_sync_timeout '
+                    f'elapsed={elapsed:.2f} fallback=goal_pose'
+                )
+                self._queue_goal(goal, allow_wait=False)
+
         if self.pending_goal is None or self.goal_active:
             return
         if not self.navigate_client.server_is_ready():
@@ -158,6 +200,7 @@ class Nav2GoalDispatcher(Node):
             return
 
         self.pending_goal = None
+        self.pending_final_goal = None
         self.pending_waypoints = []
         if result.status == 4:
             self._publish_status('selected_path_follow_complete')
@@ -199,6 +242,9 @@ class Nav2GoalDispatcher(Node):
             a.pose.position.x - b.pose.position.x,
             a.pose.position.y - b.pose.position.y,
         )
+
+    def _now_sec(self) -> float:
+        return self.get_clock().now().nanoseconds / 1e9
 
     def _publish_status(self, text: str) -> None:
         msg = String()

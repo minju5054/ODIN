@@ -89,7 +89,7 @@ controller_server:
       vx_samples: 16
       vy_samples: 1
       vtheta_samples: 24
-      sim_time: 1.7
+      sim_time: 2.0
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.3
@@ -97,10 +97,10 @@ controller_server:
       short_circuit_trajectory_evaluation: true
       stateful: true
       critics: [RotateToGoal, Oscillation, BaseObstacle, GoalAlign, PathAlign, PathDist, GoalDist]
-      BaseObstacle.scale: 0.08
-      PathAlign.scale: 18.0
+      BaseObstacle.scale: 0.55
+      PathAlign.scale: 10.0
       GoalAlign.scale: 12.0
-      PathDist.scale: 28.0
+      PathDist.scale: 14.0
       GoalDist.scale: 18.0
       RotateToGoal.scale: 24.0
       RotateToGoal.slowing_factor: 5.0
