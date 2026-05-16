@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 import rclpy
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
+from odin_interfaces.msg import HostageEvent
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 
@@ -45,6 +46,24 @@ class ReactiveScout(Node):
         self.declare_parameter('center_spiral_turn_direction', -1.0)
         self.declare_parameter('center_spiral_max_angle_deg', 45.0)
         self.declare_parameter('center_spiral_min_radius', 1.5)
+        self.declare_parameter('hostage_event_topic', '/hostage_events')
+        self.declare_parameter('enable_outer_explore_after_event', True)
+        self.declare_parameter('outer_explore_weight', 0.45)
+        self.declare_parameter('outer_explore_tangent_weight', 0.35)
+        self.declare_parameter('outer_explore_max_angle_deg', 55.0)
+        self.declare_parameter('outer_explore_min_radius', 1.2)
+        self.declare_parameter('map_min_x', -9.2)
+        self.declare_parameter('map_max_x', 9.2)
+        self.declare_parameter('map_min_y', -9.2)
+        self.declare_parameter('map_max_y', 9.2)
+        self.declare_parameter('boundary_margin_m', 1.0)
+        self.declare_parameter('red_zone_min_x', 4.0)
+        self.declare_parameter('red_zone_max_x', 10.0)
+        self.declare_parameter('red_zone_min_y', 4.0)
+        self.declare_parameter('red_zone_max_y', 10.0)
+        self.declare_parameter('red_zone_avoid_margin_m', 1.5)
+        self.declare_parameter('red_zone_predict_horizon_m', 1.4)
+        self.declare_parameter('red_zone_turn_away_weight', 0.85)
 
         self.forward_speed = float(self.get_parameter('forward_speed').value)
         self.slow_speed = float(self.get_parameter('slow_speed').value)
@@ -76,6 +95,37 @@ class ReactiveScout(Node):
         self.center_spiral_min_radius = float(
             self.get_parameter('center_spiral_min_radius').value
         )
+        self.enable_outer_explore_after_event = bool(
+            self.get_parameter('enable_outer_explore_after_event').value
+        )
+        self.outer_explore_weight = float(self.get_parameter('outer_explore_weight').value)
+        self.outer_explore_tangent_weight = float(
+            self.get_parameter('outer_explore_tangent_weight').value
+        )
+        self.outer_explore_max_angle = math.radians(
+            float(self.get_parameter('outer_explore_max_angle_deg').value)
+        )
+        self.outer_explore_min_radius = float(
+            self.get_parameter('outer_explore_min_radius').value
+        )
+        self.map_min_x = float(self.get_parameter('map_min_x').value)
+        self.map_max_x = float(self.get_parameter('map_max_x').value)
+        self.map_min_y = float(self.get_parameter('map_min_y').value)
+        self.map_max_y = float(self.get_parameter('map_max_y').value)
+        self.boundary_margin_m = float(self.get_parameter('boundary_margin_m').value)
+        self.red_zone_min_x = float(self.get_parameter('red_zone_min_x').value)
+        self.red_zone_max_x = float(self.get_parameter('red_zone_max_x').value)
+        self.red_zone_min_y = float(self.get_parameter('red_zone_min_y').value)
+        self.red_zone_max_y = float(self.get_parameter('red_zone_max_y').value)
+        self.red_zone_avoid_margin_m = float(
+            self.get_parameter('red_zone_avoid_margin_m').value
+        )
+        self.red_zone_predict_horizon_m = float(
+            self.get_parameter('red_zone_predict_horizon_m').value
+        )
+        self.red_zone_turn_away_weight = float(
+            self.get_parameter('red_zone_turn_away_weight').value
+        )
 
         self.front_distance: Optional[float] = None
         self.left_distance = math.inf
@@ -91,10 +141,17 @@ class ReactiveScout(Node):
         self.loop_window_started_at = 0.0
         self.start_time = self._now_seconds()
         self.odom_pose: Optional[Tuple[float, float, float]] = None
+        self.hostage_event_received = False
 
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.create_subscription(LaserScan, 'scan', self._scan_callback, 10)
         self.create_subscription(Odometry, 'odom', self._odom_callback, 10)
+        self.create_subscription(
+            HostageEvent,
+            str(self.get_parameter('hostage_event_topic').value),
+            self._hostage_event_callback,
+            10,
+        )
         self.create_timer(0.1, self._control_loop)
 
         self.get_logger().info(
@@ -167,7 +224,7 @@ class ReactiveScout(Node):
         elif self.front_distance > self.slow_distance and abs(target_angle) < math.radians(10.0):
             target_angle += self._explore_bias(now)
 
-        target_angle = self._apply_center_spiral_bias(target_angle)
+        target_angle = self._apply_scenario_bias(target_angle)
         cmd.angular.z = self._clamp(1.25 * target_angle, -self.max_turn_speed, self.max_turn_speed)
 
         if self.front_distance < self.stop_distance:
@@ -198,6 +255,15 @@ class ReactiveScout(Node):
             pose.orientation.w,
         )
         self.odom_pose = (pose.position.x, pose.position.y, yaw)
+
+    def _hostage_event_callback(self, msg: HostageEvent) -> None:
+        if self.hostage_event_received:
+            return
+        self.hostage_event_received = True
+        self.get_logger().info(
+            'Hostage event received; switching scout bias to safe outer exploration '
+            f'marker_id={msg.marker_id}'
+        )
 
     def _update_mode(self, now: float) -> None:
         if now < self.mode_until:
@@ -264,6 +330,7 @@ class ReactiveScout(Node):
         tangent_y = self.center_spiral_turn_direction * inward_x
         desired_x = inward_x + 0.55 * tangent_x
         desired_y = inward_y + 0.55 * tangent_y
+
         desired_heading = math.atan2(desired_y, desired_x)
         desired_angle = self._normalize_angle(desired_heading - yaw)
         desired_angle = self._clamp(
@@ -275,6 +342,163 @@ class ReactiveScout(Node):
         weight = self._clamp(self.center_spiral_weight, 0.0, 1.0)
         return self._normalize_angle((1.0 - weight) * target_angle + weight * desired_angle)
 
+    def _apply_scenario_bias(self, target_angle: float) -> float:
+        if (
+            self.hostage_event_received
+            and self.enable_outer_explore_after_event
+            and self.odom_pose is not None
+        ):
+            return self._apply_outer_explore_bias(target_angle)
+        return self._apply_center_spiral_bias(target_angle)
+
+    def _apply_outer_explore_bias(self, target_angle: float) -> float:
+        if self.front_distance is None or self.front_distance < self.stop_distance:
+            return target_angle
+
+        x, y, yaw = self.odom_pose
+        outward_x = x - self.center_x
+        outward_y = y - self.center_y
+        radius = math.hypot(outward_x, outward_y)
+        if radius < self.outer_explore_min_radius:
+            outward_x = math.cos(yaw)
+            outward_y = math.sin(yaw)
+            radius = 1.0
+
+        outward_x /= radius
+        outward_y /= radius
+
+        tangent_x = self.preferred_turn_direction * -outward_y
+        tangent_y = self.preferred_turn_direction * outward_x
+        desired_x = outward_x + self.outer_explore_tangent_weight * tangent_x
+        desired_y = outward_y + self.outer_explore_tangent_weight * tangent_y
+
+        avoid_x, avoid_y = self._boundary_avoidance_vector(x, y)
+        desired_x += avoid_x
+        desired_y += avoid_y
+
+        red_avoid_x, red_avoid_y = self._red_zone_avoidance_vector(x, y)
+        desired_x += red_avoid_x
+        desired_y += red_avoid_y
+        desired_x, desired_y = self._keep_heading_out_of_red_zone(
+            x,
+            y,
+            desired_x,
+            desired_y,
+        )
+
+        desired_norm = math.hypot(desired_x, desired_y)
+        if desired_norm < 1e-6:
+            return target_angle
+
+        desired_heading = math.atan2(desired_y, desired_x)
+        desired_angle = self._normalize_angle(desired_heading - yaw)
+        desired_angle = self._clamp(
+            desired_angle,
+            -self.outer_explore_max_angle,
+            self.outer_explore_max_angle,
+        )
+        weight = self._clamp(self.outer_explore_weight, 0.0, 1.0)
+        return self._normalize_angle((1.0 - weight) * target_angle + weight * desired_angle)
+
+    def _boundary_avoidance_vector(self, x: float, y: float) -> Tuple[float, float]:
+        margin = max(self.boundary_margin_m, 0.01)
+        avoid_x = 0.0
+        avoid_y = 0.0
+        if x - self.map_min_x < margin:
+            avoid_x += (margin - (x - self.map_min_x)) / margin
+        if self.map_max_x - x < margin:
+            avoid_x -= (margin - (self.map_max_x - x)) / margin
+        if y - self.map_min_y < margin:
+            avoid_y += (margin - (y - self.map_min_y)) / margin
+        if self.map_max_y - y < margin:
+            avoid_y -= (margin - (self.map_max_y - y)) / margin
+        return avoid_x, avoid_y
+
+    def _red_zone_avoidance_vector(self, x: float, y: float) -> Tuple[float, float]:
+        min_x = self.red_zone_min_x - self.red_zone_avoid_margin_m
+        max_x = self.red_zone_max_x + self.red_zone_avoid_margin_m
+        min_y = self.red_zone_min_y - self.red_zone_avoid_margin_m
+        max_y = self.red_zone_max_y + self.red_zone_avoid_margin_m
+        if not (min_x <= x <= max_x and min_y <= y <= max_y):
+            return 0.0, 0.0
+
+        center_x = (self.red_zone_min_x + self.red_zone_max_x) / 2.0
+        center_y = (self.red_zone_min_y + self.red_zone_max_y) / 2.0
+        away_x = x - center_x
+        away_y = y - center_y
+        distance = max(math.hypot(away_x, away_y), 0.01)
+        strength = self._clamp(
+            1.0 - distance / max(self.red_zone_avoid_margin_m + 3.0, 0.01),
+            0.2,
+            1.0,
+        )
+        return strength * away_x / distance, strength * away_y / distance
+
+    def _keep_heading_out_of_red_zone(
+        self,
+        x: float,
+        y: float,
+        desired_x: float,
+        desired_y: float,
+    ) -> Tuple[float, float]:
+        norm = math.hypot(desired_x, desired_y)
+        if norm < 1e-6:
+            return desired_x, desired_y
+
+        direction_x = desired_x / norm
+        direction_y = desired_y / norm
+        if not self._path_points_toward_red_zone(x, y, direction_x, direction_y):
+            return desired_x, desired_y
+
+        center_x = (self.red_zone_min_x + self.red_zone_max_x) / 2.0
+        center_y = (self.red_zone_min_y + self.red_zone_max_y) / 2.0
+        away_x = x - center_x
+        away_y = y - center_y
+        away_norm = math.hypot(away_x, away_y)
+        if away_norm < 1e-6:
+            away_x = -1.0
+            away_y = -1.0
+            away_norm = math.sqrt(2.0)
+
+        away_x /= away_norm
+        away_y /= away_norm
+        tangent_x = self.preferred_turn_direction * -away_y
+        tangent_y = self.preferred_turn_direction * away_x
+        safe_x = away_x + 0.45 * tangent_x
+        safe_y = away_y + 0.45 * tangent_y
+
+        weight = self._clamp(self.red_zone_turn_away_weight, 0.0, 1.0)
+        mixed_x = (1.0 - weight) * direction_x + weight * safe_x
+        mixed_y = (1.0 - weight) * direction_y + weight * safe_y
+        mixed_norm = math.hypot(mixed_x, mixed_y)
+        if mixed_norm < 1e-6:
+            return desired_x, desired_y
+        return norm * mixed_x / mixed_norm, norm * mixed_y / mixed_norm
+
+    def _path_points_toward_red_zone(
+        self,
+        x: float,
+        y: float,
+        direction_x: float,
+        direction_y: float,
+    ) -> bool:
+        min_x = self.red_zone_min_x - self.red_zone_avoid_margin_m
+        max_x = self.red_zone_max_x + self.red_zone_avoid_margin_m
+        min_y = self.red_zone_min_y - self.red_zone_avoid_margin_m
+        max_y = self.red_zone_max_y + self.red_zone_avoid_margin_m
+        horizon = max(self.red_zone_predict_horizon_m, 0.0)
+
+        if min_x <= x <= max_x and min_y <= y <= max_y:
+            return True
+
+        steps = max(1, int(math.ceil(horizon / 0.20)))
+        for index in range(1, steps + 1):
+            distance = horizon * index / steps
+            next_x = x + direction_x * distance
+            next_y = y + direction_y * distance
+            if min_x <= next_x <= max_x and min_y <= next_y <= max_y:
+                return True
+        return False
 
     def _best_gap_angle(self, samples: List[Tuple[float, float]]) -> Optional[float]:
         if not samples:

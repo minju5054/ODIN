@@ -1,0 +1,23 @@
+rgb_aruco_event_detector:
+  ros__parameters:
+    robot_names:
+      - robot_1
+      - robot_2
+    marker_id: 0
+    marker_size_m: 0.40
+    aruco_dictionary: DICT_4X4_50
+    global_frame: map
+    event_topic: /hostage_events
+    victim_event_topic: ''
+    merged_map_topic: /merged_map
+    image_topic_suffix: camera/image_raw
+    camera_info_topic_suffix: camera/camera_info
+    odom_topic_suffix: odom
+    detection_range_m: 4.0
+    event_min_period_sec: 3.0
+    camera_forward_offset_m: 0.10
+    require_line_of_sight: false
+    line_of_sight_step_m: 0.05
+    line_of_sight_endpoint_skip_m: 0.25
+    occupied_threshold: 65
+    allow_unknown_line_of_sight: true

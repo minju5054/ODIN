@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'gazebo_aruco_event_detector = odin_detection.gazebo_aruco_event_detector:main',
+            'rgb_aruco_event_detector = odin_detection.rgb_aruco_event_detector:main',
         ],
     },
 )

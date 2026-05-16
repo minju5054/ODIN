@@ -3,11 +3,115 @@
   <model name="aruco_marker_0">
     <static>true</static>
     <link name="link">
-      <visual name="aruco_marker_visual">
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>0.40 0.40 0.40</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <visual name="aruco_front">
+        <pose>0.201 0 0 0 1.5708 0</pose>
         <geometry>
           <plane>
             <normal>0 0 1</normal>
-            <size>0.70 0.70</size>
+            <size>0.40 0.40</size>
+          </plane>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://aruco_marker_0/materials/scripts</uri>
+            <uri>model://aruco_marker_0/materials/textures</uri>
+            <name>ODIN/ArucoMarker0</name>
+          </script>
+          <ambient>1 1 1 1</ambient>
+          <diffuse>1 1 1 1</diffuse>
+        </material>
+      </visual>
+
+      <visual name="aruco_back">
+        <pose>-0.201 0 0 0 -1.5708 0</pose>
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>0.40 0.40</size>
+          </plane>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://aruco_marker_0/materials/scripts</uri>
+            <uri>model://aruco_marker_0/materials/textures</uri>
+            <name>ODIN/ArucoMarker0</name>
+          </script>
+          <ambient>1 1 1 1</ambient>
+          <diffuse>1 1 1 1</diffuse>
+        </material>
+      </visual>
+
+      <visual name="aruco_left">
+        <pose>0 0.201 0 -1.5708 0 0</pose>
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>0.40 0.40</size>
+          </plane>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://aruco_marker_0/materials/scripts</uri>
+            <uri>model://aruco_marker_0/materials/textures</uri>
+            <name>ODIN/ArucoMarker0</name>
+          </script>
+          <ambient>1 1 1 1</ambient>
+          <diffuse>1 1 1 1</diffuse>
+        </material>
+      </visual>
+
+      <visual name="aruco_right">
+        <pose>0 -0.201 0 1.5708 0 0</pose>
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>0.40 0.40</size>
+          </plane>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://aruco_marker_0/materials/scripts</uri>
+            <uri>model://aruco_marker_0/materials/textures</uri>
+            <name>ODIN/ArucoMarker0</name>
+          </script>
+          <ambient>1 1 1 1</ambient>
+          <diffuse>1 1 1 1</diffuse>
+        </material>
+      </visual>
+
+      <visual name="aruco_top">
+        <pose>0 0 0.201 0 0 0</pose>
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>0.40 0.40</size>
+          </plane>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://aruco_marker_0/materials/scripts</uri>
+            <uri>model://aruco_marker_0/materials/textures</uri>
+            <name>ODIN/ArucoMarker0</name>
+          </script>
+          <ambient>1 1 1 1</ambient>
+          <diffuse>1 1 1 1</diffuse>
+        </material>
+      </visual>
+
+      <visual name="aruco_bottom">
+        <pose>0 0 -0.201 3.1416 0 0</pose>
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>0.40 0.40</size>
           </plane>
         </geometry>
         <material>

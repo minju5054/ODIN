@@ -33,7 +33,7 @@ def generate_launch_description():
     detection_launch = PathJoinSubstitution([
         FindPackageShare('odin_detection'),
         'launch',
-        'gazebo_aruco_event_detector.launch.py',
+        'rgb_aruco_event_detector.launch.py',
     ])
     coordinator_launch = PathJoinSubstitution([
         FindPackageShare('odin_coordinator'),
@@ -79,7 +79,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'start_detection',
             default_value='true',
-            description='Start Gazebo-based ArUco hostage event detector.',
+            description='Start RGB-camera ArUco hostage event detector.',
         ),
         DeclareLaunchArgument(
             'start_coordinator',

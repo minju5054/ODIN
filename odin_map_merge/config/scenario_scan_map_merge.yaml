@@ -12,7 +12,7 @@ scenario_scan_map_merge:
     free_value: 0
     occupied_value: 100
     unknown_value: -1
-    max_range: 3.5
+    max_range: 1.9
     scan_decimation: 2
     robot_clear_radius: 0.42
     dynamic_obstacle_filter_radius: 0.55

@@ -119,7 +119,7 @@
     <include>
       <name>hostage_aruco_marker_0</name>
       <uri>model://aruco_marker_0</uri>
-      <pose>0.25 -0.305 0.62 1.5708 0 0</pose>
+      <pose>0.25 -0.75 0.20 0 0 0</pose>
     </include>
 
     <model name="east_landmark_t_vertical">

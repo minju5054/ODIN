@@ -34,7 +34,7 @@ class ScenarioScanMapMerge(Node):
         self.declare_parameter('free_value', 0)
         self.declare_parameter('occupied_value', 100)
         self.declare_parameter('unknown_value', -1)
-        self.declare_parameter('max_range', 3.5)
+        self.declare_parameter('max_range', 1.9)
         self.declare_parameter('scan_decimation', 2)
         self.declare_parameter('robot_clear_radius', 0.42)
         self.declare_parameter('dynamic_obstacle_filter_radius', 0.55)

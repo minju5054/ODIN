@@ -119,8 +119,41 @@ class Robot3SpawnOnGoal(Node):
             base_frame_tag.text = f'{namespace}/base_footprint'
         for scan_frame_tag in root.iter('frame_name'):
             scan_frame_tag.text = f'{namespace}/base_scan'
+        if model is not None:
+            self._set_lidar_range(model, 2.2)
+            self._add_rescue_visual_marker(model)
 
         return '<?xml version="1.0" ?>\n' + ET.tostring(root, encoding='unicode')
+
+    @staticmethod
+    def _set_lidar_range(model, max_range: float) -> None:
+        for sensor in model.iter('sensor'):
+            if sensor.get('type') != 'ray':
+                continue
+            visualize_tag = sensor.find('visualize')
+            if visualize_tag is not None:
+                visualize_tag.text = 'false'
+            range_tag = sensor.find('./ray/range/max')
+            if range_tag is not None:
+                range_tag.text = f'{max_range:.1f}'
+
+    @staticmethod
+    def _add_rescue_visual_marker(model) -> None:
+        link = ET.SubElement(model, 'link', {'name': 'rescue_beacon_link'})
+        visual = ET.SubElement(link, 'visual', {'name': 'rescue_beacon_visual'})
+        geometry = ET.SubElement(visual, 'geometry')
+        cylinder = ET.SubElement(geometry, 'cylinder')
+        ET.SubElement(cylinder, 'radius').text = '0.11'
+        ET.SubElement(cylinder, 'length').text = '0.32'
+        material = ET.SubElement(visual, 'material')
+        ET.SubElement(material, 'ambient').text = '0.0 0.35 1.0 1'
+        ET.SubElement(material, 'diffuse').text = '0.0 0.45 1.0 1'
+        ET.SubElement(material, 'emissive').text = '0.0 0.25 1.0 1'
+
+        joint = ET.SubElement(model, 'joint', {'name': 'rescue_beacon_joint', 'type': 'fixed'})
+        ET.SubElement(joint, 'parent').text = 'base_link'
+        ET.SubElement(joint, 'child').text = 'rescue_beacon_link'
+        ET.SubElement(joint, 'pose').text = '0 0 0.42 0 0 0'
 
     def _spawn_pose(self) -> Pose:
         pose = Pose()
