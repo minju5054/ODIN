@@ -4,10 +4,11 @@ from typing import List, Optional, Tuple
 
 import rclpy
 from geometry_msgs.msg import Twist
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import OccupancyGrid, Odometry
 from odin_interfaces.msg import HostageEvent
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import String
 
 
 class DriveMode(Enum):
@@ -47,7 +48,14 @@ class ReactiveScout(Node):
         self.declare_parameter('center_spiral_max_angle_deg', 45.0)
         self.declare_parameter('center_spiral_min_radius', 1.5)
         self.declare_parameter('hostage_event_topic', '/hostage_events')
+        self.declare_parameter('merged_map_topic', '/merged_map')
         self.declare_parameter('enable_outer_explore_after_event', True)
+        self.declare_parameter('enable_frontier_bias_after_event', True)
+        self.declare_parameter('frontier_bias_weight', 0.75)
+        self.declare_parameter('frontier_refresh_period_sec', 1.5)
+        self.declare_parameter('frontier_min_distance_m', 1.0)
+        self.declare_parameter('frontier_max_distance_m', 7.5)
+        self.declare_parameter('frontier_cell_stride', 2)
         self.declare_parameter('outer_explore_weight', 0.45)
         self.declare_parameter('outer_explore_tangent_weight', 0.35)
         self.declare_parameter('outer_explore_max_angle_deg', 55.0)
@@ -64,6 +72,8 @@ class ReactiveScout(Node):
         self.declare_parameter('red_zone_avoid_margin_m', 1.5)
         self.declare_parameter('red_zone_predict_horizon_m', 1.4)
         self.declare_parameter('red_zone_turn_away_weight', 0.85)
+        self.declare_parameter('wait_for_mission_policy', True)
+        self.declare_parameter('mission_policy_topic', '/ai/mission_policy')
 
         self.forward_speed = float(self.get_parameter('forward_speed').value)
         self.slow_speed = float(self.get_parameter('slow_speed').value)
@@ -98,6 +108,20 @@ class ReactiveScout(Node):
         self.enable_outer_explore_after_event = bool(
             self.get_parameter('enable_outer_explore_after_event').value
         )
+        self.enable_frontier_bias_after_event = bool(
+            self.get_parameter('enable_frontier_bias_after_event').value
+        )
+        self.frontier_bias_weight = float(self.get_parameter('frontier_bias_weight').value)
+        self.frontier_refresh_period_sec = float(
+            self.get_parameter('frontier_refresh_period_sec').value
+        )
+        self.frontier_min_distance_m = float(
+            self.get_parameter('frontier_min_distance_m').value
+        )
+        self.frontier_max_distance_m = float(
+            self.get_parameter('frontier_max_distance_m').value
+        )
+        self.frontier_cell_stride = max(1, int(self.get_parameter('frontier_cell_stride').value))
         self.outer_explore_weight = float(self.get_parameter('outer_explore_weight').value)
         self.outer_explore_tangent_weight = float(
             self.get_parameter('outer_explore_tangent_weight').value
@@ -126,6 +150,7 @@ class ReactiveScout(Node):
         self.red_zone_turn_away_weight = float(
             self.get_parameter('red_zone_turn_away_weight').value
         )
+        self.wait_for_mission_policy = bool(self.get_parameter('wait_for_mission_policy').value)
 
         self.front_distance: Optional[float] = None
         self.left_distance = math.inf
@@ -141,11 +166,28 @@ class ReactiveScout(Node):
         self.loop_window_started_at = 0.0
         self.start_time = self._now_seconds()
         self.odom_pose: Optional[Tuple[float, float, float]] = None
+        self.latest_map: Optional[OccupancyGrid] = None
+        self.frontier_target: Optional[Tuple[float, float]] = None
+        self.last_frontier_update_sec = -math.inf
         self.hostage_event_received = False
+        self.mission_started = not self.wait_for_mission_policy
+        self.wait_logged = False
 
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.create_subscription(LaserScan, 'scan', self._scan_callback, 10)
         self.create_subscription(Odometry, 'odom', self._odom_callback, 10)
+        self.create_subscription(
+            String,
+            str(self.get_parameter('mission_policy_topic').value),
+            self._mission_policy_callback,
+            10,
+        )
+        self.create_subscription(
+            OccupancyGrid,
+            str(self.get_parameter('merged_map_topic').value),
+            self._map_callback,
+            1,
+        )
         self.create_subscription(
             HostageEvent,
             str(self.get_parameter('hostage_event_topic').value),
@@ -157,7 +199,8 @@ class ReactiveScout(Node):
         self.get_logger().info(
             'Reactive scout started: '
             f'forward={self.forward_speed:.2f}, turn={self.max_turn_speed:.2f}, '
-            f'stop={self.stop_distance:.2f}, free={self.free_distance:.2f}'
+            f'stop={self.stop_distance:.2f}, free={self.free_distance:.2f}, '
+            f'wait_for_policy={self.wait_for_mission_policy}'
         )
 
     def _scan_callback(self, msg: LaserScan) -> None:
@@ -198,6 +241,13 @@ class ReactiveScout(Node):
 
     def _control_loop(self) -> None:
         cmd = Twist()
+
+        if not self.mission_started:
+            if not self.wait_logged:
+                self.get_logger().info('Waiting for /ai/mission_policy before scout motion.')
+                self.wait_logged = True
+            self.cmd_pub.publish(cmd)
+            return
 
         if self.front_distance is None or self.target_angle is None:
             self.cmd_pub.publish(cmd)
@@ -256,6 +306,9 @@ class ReactiveScout(Node):
         )
         self.odom_pose = (pose.position.x, pose.position.y, yaw)
 
+    def _map_callback(self, msg: OccupancyGrid) -> None:
+        self.latest_map = msg
+
     def _hostage_event_callback(self, msg: HostageEvent) -> None:
         if self.hostage_event_received:
             return
@@ -264,6 +317,14 @@ class ReactiveScout(Node):
             'Hostage event received; switching scout bias to safe outer exploration '
             f'marker_id={msg.marker_id}'
         )
+
+    def _mission_policy_callback(self, msg: String) -> None:
+        policy = msg.data.strip().upper()
+        if policy not in ('FAST_RESCUE', 'SAFE_RESCUE', 'STEALTH_RESCUE', 'BALANCED'):
+            return
+        if not self.mission_started:
+            self.get_logger().info(f'Mission policy received; scout motion enabled: {policy}')
+        self.mission_started = True
 
     def _update_mode(self, now: float) -> None:
         if now < self.mode_until:
@@ -376,6 +437,10 @@ class ReactiveScout(Node):
         desired_x += avoid_x
         desired_y += avoid_y
 
+        frontier_x, frontier_y = self._frontier_bias_vector(x, y)
+        desired_x += frontier_x
+        desired_y += frontier_y
+
         red_avoid_x, red_avoid_y = self._red_zone_avoidance_vector(x, y)
         desired_x += red_avoid_x
         desired_y += red_avoid_y
@@ -399,6 +464,109 @@ class ReactiveScout(Node):
         )
         weight = self._clamp(self.outer_explore_weight, 0.0, 1.0)
         return self._normalize_angle((1.0 - weight) * target_angle + weight * desired_angle)
+
+    def _frontier_bias_vector(self, x: float, y: float) -> Tuple[float, float]:
+        if not self.enable_frontier_bias_after_event or self.latest_map is None:
+            return 0.0, 0.0
+
+        now = self._now_seconds()
+        if now - self.last_frontier_update_sec >= self.frontier_refresh_period_sec:
+            self.frontier_target = self._select_frontier_target(x, y)
+            self.last_frontier_update_sec = now
+
+        if self.frontier_target is None:
+            return 0.0, 0.0
+
+        target_x, target_y = self.frontier_target
+        dx = target_x - x
+        dy = target_y - y
+        distance = math.hypot(dx, dy)
+        if distance < max(self.frontier_min_distance_m * 0.5, 0.2):
+            self.frontier_target = None
+            return 0.0, 0.0
+
+        weight = self._clamp(self.frontier_bias_weight, 0.0, 2.0)
+        return weight * dx / distance, weight * dy / distance
+
+    def _select_frontier_target(self, robot_x: float, robot_y: float) -> Optional[Tuple[float, float]]:
+        grid = self.latest_map
+        if grid is None:
+            return None
+
+        best_score = -math.inf
+        best_target: Optional[Tuple[float, float]] = None
+        for cell_y in range(1, grid.info.height - 1, self.frontier_cell_stride):
+            for cell_x in range(1, grid.info.width - 1, self.frontier_cell_stride):
+                value = self._cell_value(grid, cell_x, cell_y)
+                if value is None or value < 0 or value > 30:
+                    continue
+                if not self._touches_unknown(grid, cell_x, cell_y):
+                    continue
+
+                world_x, world_y = self._cell_to_world(grid, cell_x, cell_y)
+                if self._point_inside_red_zone_with_margin(world_x, world_y):
+                    continue
+
+                distance = math.hypot(world_x - robot_x, world_y - robot_y)
+                if distance < self.frontier_min_distance_m or distance > self.frontier_max_distance_m:
+                    continue
+
+                outward_score = self._outward_score(robot_x, robot_y, world_x, world_y)
+                distance_score = 1.0 - abs(distance - 3.0) / max(self.frontier_max_distance_m, 0.1)
+                boundary_score = self._boundary_frontier_score(world_x, world_y)
+                score = 2.0 * outward_score + 1.2 * distance_score + 0.6 * boundary_score
+                if score > best_score:
+                    best_score = score
+                    best_target = (world_x, world_y)
+
+        return best_target
+
+    def _touches_unknown(self, grid: OccupancyGrid, cell_x: int, cell_y: int) -> bool:
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
+                value = self._cell_value(grid, cell_x + dx, cell_y + dy)
+                if value is not None and value < 0:
+                    return True
+        return False
+
+    def _outward_score(
+        self,
+        robot_x: float,
+        robot_y: float,
+        target_x: float,
+        target_y: float,
+    ) -> float:
+        robot_out_x = robot_x - self.center_x
+        robot_out_y = robot_y - self.center_y
+        robot_out_norm = math.hypot(robot_out_x, robot_out_y)
+        target_x -= robot_x
+        target_y -= robot_y
+        target_norm = math.hypot(target_x, target_y)
+        if robot_out_norm < 1e-6 or target_norm < 1e-6:
+            return 0.0
+        dot = (robot_out_x * target_x + robot_out_y * target_y) / (robot_out_norm * target_norm)
+        return self._clamp((dot + 1.0) / 2.0, 0.0, 1.0)
+
+    def _boundary_frontier_score(self, x: float, y: float) -> float:
+        distance_to_boundary = min(
+            x - self.map_min_x,
+            self.map_max_x - x,
+            y - self.map_min_y,
+            self.map_max_y - y,
+        )
+        return 1.0 - self._clamp(distance_to_boundary / 5.0, 0.0, 1.0)
+
+    def _point_inside_red_zone_with_margin(self, x: float, y: float) -> bool:
+        return (
+            self.red_zone_min_x - self.red_zone_avoid_margin_m
+            <= x
+            <= self.red_zone_max_x + self.red_zone_avoid_margin_m
+            and self.red_zone_min_y - self.red_zone_avoid_margin_m
+            <= y
+            <= self.red_zone_max_y + self.red_zone_avoid_margin_m
+        )
 
     def _boundary_avoidance_vector(self, x: float, y: float) -> Tuple[float, float]:
         margin = max(self.boundary_margin_m, 0.01)
@@ -499,6 +667,21 @@ class ReactiveScout(Node):
             if min_x <= next_x <= max_x and min_y <= next_y <= max_y:
                 return True
         return False
+
+    @staticmethod
+    def _cell_value(grid: OccupancyGrid, cell_x: int, cell_y: int) -> Optional[int]:
+        if 0 <= cell_x < grid.info.width and 0 <= cell_y < grid.info.height:
+            return int(grid.data[cell_y * grid.info.width + cell_x])
+        return None
+
+    @staticmethod
+    def _cell_to_world(grid: OccupancyGrid, cell_x: int, cell_y: int) -> Tuple[float, float]:
+        origin = grid.info.origin.position
+        resolution = grid.info.resolution
+        return (
+            origin.x + (cell_x + 0.5) * resolution,
+            origin.y + (cell_y + 0.5) * resolution,
+        )
 
     def _best_gap_angle(self, samples: List[Tuple[float, float]]) -> Optional[float]:
         if not samples:

@@ -1,8 +1,10 @@
-from typing import Optional
+import math
+from typing import List, Optional
 
 import rclpy
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
+from nav_msgs.msg import Path
 from rclpy.action import ActionClient
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -16,15 +18,28 @@ class Nav2GoalDispatcher(Node):
         super().__init__('nav2_goal_dispatcher')
 
         self.declare_parameter('goal_topic', '/robot_3/goal_pose')
+        self.declare_parameter('selected_path_topic', '/ai/selected_path')
         self.declare_parameter('status_topic', '/robot_3/dispatch_status')
         self.declare_parameter('navigate_action', '/robot_3/navigate_to_pose')
         self.declare_parameter('server_check_period_sec', 0.5)
         self.declare_parameter('feedback_period_sec', 1.0)
+        self.declare_parameter('follow_selected_path', True)
+        self.declare_parameter('selected_path_waypoint_spacing_m', 1.0)
+        self.declare_parameter('selected_path_goal_tolerance_m', 0.35)
 
         self.pending_goal: Optional[PoseStamped] = None
+        self.pending_waypoints: List[PoseStamped] = []
+        self.latest_selected_path: Optional[Path] = None
         self.goal_active = False
         self.last_feedback_time_sec = 0.0
         self.feedback_period_sec = float(self.get_parameter('feedback_period_sec').value)
+        self.follow_selected_path = bool(self.get_parameter('follow_selected_path').value)
+        self.selected_path_waypoint_spacing_m = float(
+            self.get_parameter('selected_path_waypoint_spacing_m').value
+        )
+        self.selected_path_goal_tolerance_m = float(
+            self.get_parameter('selected_path_goal_tolerance_m').value
+        )
 
         self.status_pub = self.create_publisher(
             String,
@@ -42,6 +57,12 @@ class Nav2GoalDispatcher(Node):
             self._goal_callback,
             10,
         )
+        self.create_subscription(
+            Path,
+            str(self.get_parameter('selected_path_topic').value),
+            self._selected_path_callback,
+            10,
+        )
         self.create_timer(
             float(self.get_parameter('server_check_period_sec').value),
             self._dispatch_loop,
@@ -49,12 +70,27 @@ class Nav2GoalDispatcher(Node):
 
         self._publish_status('nav2_dispatcher_ready waiting_for_goal')
 
+    def _selected_path_callback(self, msg: Path) -> None:
+        if not msg.poses:
+            return
+        self.latest_selected_path = msg
+        self._publish_status(f'selected_path_cached waypoints={len(msg.poses)}')
+
     def _goal_callback(self, msg: PoseStamped) -> None:
-        self.pending_goal = msg
+        self.pending_waypoints = self._make_selected_path_waypoints(msg)
+        if self.pending_waypoints:
+            self.pending_goal = self.pending_waypoints.pop(0)
+            self._publish_status(
+                'selected_path_follow_queued '
+                f'waypoints_remaining={len(self.pending_waypoints) + 1} '
+                f'final_x={msg.pose.position.x:.2f} final_y={msg.pose.position.y:.2f}'
+            )
+        else:
+            self.pending_goal = msg
+            self._publish_status(
+                f'nav2_goal_queued x={msg.pose.position.x:.2f} y={msg.pose.position.y:.2f}'
+            )
         self.goal_active = False
-        self._publish_status(
-            f'nav2_goal_queued x={msg.pose.position.x:.2f} y={msg.pose.position.y:.2f}'
-        )
 
     def _dispatch_loop(self) -> None:
         if self.pending_goal is None or self.goal_active:
@@ -77,6 +113,7 @@ class Nav2GoalDispatcher(Node):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.goal_active = False
+            self.pending_waypoints = []
             self._publish_status('nav2_goal_rejected')
             return
 
@@ -99,8 +136,69 @@ class Nav2GoalDispatcher(Node):
     def _result_callback(self, future) -> None:
         result = future.result()
         self.goal_active = False
-        self.pending_goal = None
         self._publish_status(f'nav2_result status={result.status}')
+        if result.status == 4 and self.pending_waypoints:
+            self.pending_goal = self.pending_waypoints.pop(0)
+            self._publish_status(
+                'selected_path_waypoint_advance '
+                f'waypoints_remaining={len(self.pending_waypoints)} '
+                f'x={self.pending_goal.pose.position.x:.2f} '
+                f'y={self.pending_goal.pose.position.y:.2f}'
+            )
+            return
+        if result.status != 4 and self.pending_waypoints:
+            self.pending_goal = self.pending_waypoints.pop(0)
+            self._publish_status(
+                'selected_path_waypoint_skipped '
+                f'failed_status={result.status} '
+                f'waypoints_remaining={len(self.pending_waypoints)} '
+                f'x={self.pending_goal.pose.position.x:.2f} '
+                f'y={self.pending_goal.pose.position.y:.2f}'
+            )
+            return
+
+        self.pending_goal = None
+        self.pending_waypoints = []
+        if result.status == 4:
+            self._publish_status('selected_path_follow_complete')
+            self._publish_status('dispatch_complete')
+
+    def _make_selected_path_waypoints(self, final_goal: PoseStamped) -> List[PoseStamped]:
+        if not self.follow_selected_path or self.latest_selected_path is None:
+            return []
+        path = self.latest_selected_path
+        if not path.poses or not self._path_matches_goal(path, final_goal):
+            return []
+
+        waypoints: List[PoseStamped] = []
+        last_x = path.poses[0].pose.position.x
+        last_y = path.poses[0].pose.position.y
+        spacing = max(self.selected_path_waypoint_spacing_m, 0.2)
+        for pose in path.poses[1:]:
+            x = pose.pose.position.x
+            y = pose.pose.position.y
+            if math.hypot(x - last_x, y - last_y) < spacing:
+                continue
+            waypoints.append(pose)
+            last_x = x
+            last_y = y
+
+        if not waypoints or self._distance(waypoints[-1], final_goal) > 0.05:
+            waypoints.append(final_goal)
+        else:
+            waypoints[-1] = final_goal
+
+        return waypoints
+
+    def _path_matches_goal(self, path: Path, goal: PoseStamped) -> bool:
+        return self._distance(path.poses[-1], goal) <= self.selected_path_goal_tolerance_m
+
+    @staticmethod
+    def _distance(a: PoseStamped, b: PoseStamped) -> float:
+        return math.hypot(
+            a.pose.position.x - b.pose.position.x,
+            a.pose.position.y - b.pose.position.y,
+        )
 
     def _publish_status(self, text: str) -> None:
         msg = String()

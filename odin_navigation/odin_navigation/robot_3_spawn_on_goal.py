@@ -19,17 +19,19 @@ class Robot3SpawnOnGoal(Node):
         super().__init__('robot_3_spawn_on_goal')
 
         self.declare_parameter('goal_topic', '/robot_3/goal_pose')
+        self.declare_parameter('spawn_trigger_topic', '/robot_3/spawn_trigger')
         self.declare_parameter('status_topic', '/robot_3/dispatch_status')
         self.declare_parameter('robot_name', 'robot_3')
-        self.declare_parameter('spawn_x', -7.5)
+        self.declare_parameter('spawn_x', 7.5)
         self.declare_parameter('spawn_y', -7.5)
         self.declare_parameter('spawn_z', 0.01)
-        self.declare_parameter('spawn_yaw', 0.785398)
+        self.declare_parameter('spawn_yaw', 1.5708)
         self.declare_parameter('spawn_service', '/spawn_entity')
 
         self.robot_name = str(self.get_parameter('robot_name').value)
         self.spawn_requested = False
         self.spawned = False
+        self.spawn_triggered = False
         self.pending_goal: Optional[PoseStamped] = None
 
         self.status_pub = self.create_publisher(
@@ -47,6 +49,12 @@ class Robot3SpawnOnGoal(Node):
             self._goal_callback,
             10,
         )
+        self.create_subscription(
+            PoseStamped,
+            str(self.get_parameter('spawn_trigger_topic').value),
+            self._spawn_trigger_callback,
+            10,
+        )
         self.create_timer(0.5, self._spawn_loop)
 
         self._publish_status('spawn_manager_ready waiting_for_validated_goal')
@@ -61,8 +69,18 @@ class Robot3SpawnOnGoal(Node):
                 f'goal_y={msg.pose.position.y:.2f}'
             )
 
+    def _spawn_trigger_callback(self, msg: PoseStamped) -> None:
+        self.spawn_triggered = True
+        if self.spawned:
+            self._publish_status('early_spawn_skipped reason=robot_3_already_spawned')
+            return
+        self._publish_status(
+            f'early_spawn_trigger_received x={msg.pose.position.x:.2f} '
+            f'y={msg.pose.position.y:.2f}'
+        )
+
     def _spawn_loop(self) -> None:
-        if self.pending_goal is None or self.spawned or self.spawn_requested:
+        if (self.pending_goal is None and not self.spawn_triggered) or self.spawned or self.spawn_requested:
             return
 
         if not self.spawn_client.service_is_ready():

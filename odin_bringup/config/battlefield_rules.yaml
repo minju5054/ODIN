@@ -21,16 +21,16 @@ battlefield:
       yaw: 1.5708
 
     robot_3:
-      x: -7.5
+      x: 7.5
       y: -7.5
-      yaw: 0.785398
+      yaw: 1.5708
 
-  # Initial safe corner used by robot_3 before coordinator dispatch
+  # Initial safe insertion point used by robot_3 before coordinator dispatch
   safe_insertion:
-    name: default_safe_corner
-    x: -7.5
+    name: robot_2_initial_safe_insertion
+    x: 7.5
     y: -7.5
-    yaw: 0.785398
+    yaw: 1.5708
 
   # Preferred central search area for scout exploration bias
   hostage_search_area:

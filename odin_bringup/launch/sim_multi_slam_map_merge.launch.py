@@ -13,6 +13,7 @@ def generate_launch_description():
     start_detection = LaunchConfiguration('start_detection')
     start_coordinator = LaunchConfiguration('start_coordinator')
     start_ai = LaunchConfiguration('start_ai')
+    start_mission_intent_gui = LaunchConfiguration('start_mission_intent_gui')
     start_robot_3_dispatch = LaunchConfiguration('start_robot_3_dispatch')
 
     gazebo_launch = PathJoinSubstitution([
@@ -43,7 +44,7 @@ def generate_launch_description():
     ai_launch = PathJoinSubstitution([
         FindPackageShare('odin_ai'),
         'launch',
-        'heuristic_waypoint_recommender.launch.py',
+        'virtual_qwen_planner.launch.py',
     ])
     robot_3_dispatch_launch = PathJoinSubstitution([
         FindPackageShare('odin_navigation'),
@@ -89,7 +90,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'start_ai',
             default_value='true',
-            description='Start local heuristic AI waypoint recommender.',
+            description='Start virtual Qwen route planner.',
+        ),
+        DeclareLaunchArgument(
+            'start_mission_intent_gui',
+            default_value='true',
+            description='Start mission intent input GUI with the virtual Qwen planner.',
         ),
         DeclareLaunchArgument(
             'start_robot_3_dispatch',
@@ -147,6 +153,7 @@ def generate_launch_description():
                     launch_arguments={
                         'use_sim_time': use_sim_time,
                         'battlefield_config_file': battlefield_config,
+                        'start_mission_intent_gui': start_mission_intent_gui,
                     }.items(),
                     condition=IfCondition(start_ai),
                 ),

@@ -75,6 +75,7 @@ class RgbArucoEventDetector(Node):
         self.camera_info_by_robot: Dict[str, CameraInfo] = {}
         self.odom_by_robot: Dict[str, Odometry] = {}
         self.last_event_time_by_robot: Dict[str, float] = {}
+        self.published_marker_ids = set()
         self.latest_map: Optional[OccupancyGrid] = None
 
         event_topic = str(self.get_parameter('event_topic').value)
@@ -128,6 +129,8 @@ class RgbArucoEventDetector(Node):
         self.odom_by_robot[robot_name] = msg
 
     def _image_callback(self, robot_name: str, msg: Image) -> None:
+        if self.marker_id in self.published_marker_ids:
+            return
         if self._event_is_throttled(robot_name):
             return
 
@@ -298,6 +301,9 @@ class RgbArucoEventDetector(Node):
         return int(self.latest_map.data[cell_y * self.latest_map.info.width + cell_x])
 
     def _publish_event(self, robot_name: str, marker_pose: Pose) -> None:
+        if self.marker_id in self.published_marker_ids:
+            return
+
         event = HostageEvent()
         event.header.stamp = self.get_clock().now().to_msg()
         event.header.frame_id = self.global_frame
@@ -310,6 +316,7 @@ class RgbArucoEventDetector(Node):
             self.victim_event_pub.publish(event)
 
         self.last_event_time_by_robot[robot_name] = self._now_seconds()
+        self.published_marker_ids.add(self.marker_id)
         self.get_logger().info(
             f'Published RGB hostage event: marker_id={event.marker_id}, '
             f'robot={robot_name}, frame={event.header.frame_id}, '

@@ -30,7 +30,14 @@ COMMON_PARAMS = {
     'center_spiral_max_angle_deg': 45.0,
     'center_spiral_min_radius': 1.5,
     'hostage_event_topic': '/hostage_events',
+    'merged_map_topic': '/merged_map',
     'enable_outer_explore_after_event': True,
+    'enable_frontier_bias_after_event': True,
+    'frontier_bias_weight': 0.75,
+    'frontier_refresh_period_sec': 1.5,
+    'frontier_min_distance_m': 1.0,
+    'frontier_max_distance_m': 7.5,
+    'frontier_cell_stride': 2,
     'outer_explore_weight': 0.45,
     'outer_explore_tangent_weight': 0.35,
     'outer_explore_max_angle_deg': 55.0,
@@ -47,6 +54,8 @@ COMMON_PARAMS = {
     'red_zone_avoid_margin_m': 1.5,
     'red_zone_predict_horizon_m': 1.4,
     'red_zone_turn_away_weight': 0.85,
+    'wait_for_mission_policy': True,
+    'mission_policy_topic': '/ai/mission_policy',
 }
 
 

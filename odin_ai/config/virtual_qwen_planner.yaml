@@ -1,0 +1,54 @@
+virtual_qwen_planner:
+  ros__parameters:
+    candidate_routes_topic: /coordinator/candidate_routes
+    hostage_event_topic: /hostage_events
+    merged_map_topic: /merged_map
+    recommendation_topic: /ai/waypoint_recommendation
+    selected_path_topic: /ai/selected_path
+    status_topic: /ai/status
+    mission_intent_topic: /mission/intent
+    mission_policy_topic: /ai/mission_policy
+    battlefield_config_file: ''
+    safe_insertion_x: 7.5
+    safe_insertion_y: -7.5
+    safe_insertion_yaw: 1.5708
+    map_min_x: -10.0
+    map_max_x: 10.0
+    map_min_y: -10.0
+    map_max_y: 10.0
+    detour_offsets_m:
+      - 1.2
+      - -1.2
+      - 2.0
+      - -2.0
+    rule_hostage_standoff_m: 0.9
+    path_waypoint_spacing_m: 0.45
+    prefer_map_astar_routes: true
+    astar_unknown_penalties:
+      - 3.0
+      - 8.0
+      - 15.0
+    astar_obstacle_inflation_m: 0.18
+    astar_max_expansions: 120000
+    occupied_threshold: 65
+    allow_unknown_cells: true
+    unknown_cell_penalty: 10.0
+    occupied_cell_penalty: 1000.0
+    route_segment_sample_step_m: 0.08
+    fallback_route_penalty: 80.0
+    red_zone_penalty: 1000.0
+    enemy_vision_penalty: 600.0
+    length_weight: 2.0
+    turn_weight: 0.18
+    use_remote_qwen: true
+    qwen_api_url: http://10.42.0.14:8081/v1/chat/completions
+    qwen_model: Qwen3-VL-4B-Instruct-Q4_K_M.gguf
+    qwen_timeout_sec: 25.0
+    qwen_max_tokens: 80
+    qwen_temperature: 0.1
+    qwen_max_candidate_routes: 4
+    # FAST_RESCUE: prefer short routes.
+    # SAFE_RESCUE: prefer known map cells over distance.
+    # STEALTH_RESCUE: strongly avoid enemy/red-zone exposure.
+    # BALANCED: moderate distance and safety tradeoff.
+    mission_mode: SAFE_RESCUE

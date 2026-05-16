@@ -57,7 +57,11 @@ class MissionSuccessMarker(Node):
     def _status_callback(self, msg: String) -> None:
         if self.mission_succeeded:
             return
-        if 'nav2_result status=4' not in msg.data and 'goal_reached' not in msg.data:
+        if (
+            'selected_path_follow_complete' not in msg.data
+            and 'dispatch_complete' not in msg.data
+            and 'goal_reached' not in msg.data
+        ):
             return
 
         self.mission_succeeded = True

@@ -21,10 +21,11 @@ robot_3:
 robot_3_spawn_on_goal:
   ros__parameters:
     goal_topic: /robot_3/goal_pose
+    spawn_trigger_topic: /robot_3/spawn_trigger
     status_topic: /robot_3/dispatch_status
     robot_name: robot_3
-    spawn_x: -7.5
+    spawn_x: 7.5
     spawn_y: -7.5
     spawn_z: 0.01
-    spawn_yaw: 0.785398
+    spawn_yaw: 1.5708
     spawn_service: /spawn_entity

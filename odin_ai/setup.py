@@ -25,6 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'heuristic_waypoint_recommender = odin_ai.heuristic_waypoint_recommender:main',
+            'mission_intent_panel = odin_ai.mission_intent_panel:main',
+            'virtual_qwen_planner = odin_ai.virtual_qwen_planner:main',
         ],
     },
 )

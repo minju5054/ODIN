@@ -50,6 +50,7 @@ class GazeboArucoEventDetector(Node):
             self.get_parameter('allow_unknown_line_of_sight').value
         )
         self.last_event_time_by_robot: Dict[str, float] = {}
+        self.published_marker_ids = set()
         self.latest_map: Optional[OccupancyGrid] = None
 
         event_topic = str(self.get_parameter('event_topic').value)
@@ -76,6 +77,9 @@ class GazeboArucoEventDetector(Node):
         self.latest_map = msg
 
     def _model_states_callback(self, msg: ModelStates) -> None:
+        if self.marker_id in self.published_marker_ids:
+            return
+
         poses = dict(zip(msg.name, msg.pose))
         marker_pose = poses.get(self.marker_model_name)
         if marker_pose is None:
@@ -163,6 +167,9 @@ class GazeboArucoEventDetector(Node):
         return int(self.latest_map.data[cell_y * self.latest_map.info.width + cell_x])
 
     def _publish_event(self, robot_name: str, marker_pose: Pose) -> None:
+        if self.marker_id in self.published_marker_ids:
+            return
+
         event = HostageEvent()
         event.header.stamp = self.get_clock().now().to_msg()
         event.header.frame_id = self.global_frame
@@ -175,6 +182,7 @@ class GazeboArucoEventDetector(Node):
             self.victim_event_pub.publish(event)
 
         self.last_event_time_by_robot[robot_name] = self._now_seconds()
+        self.published_marker_ids.add(self.marker_id)
         self.get_logger().info(
             f'Published hostage event: marker_id={event.marker_id}, '
             f'robot={robot_name}, frame={event.header.frame_id}, '

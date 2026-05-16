@@ -29,6 +29,10 @@ setup(
             'nav2_goal_dispatcher = odin_navigation.nav2_goal_dispatcher:main',
             'mission_success_marker = odin_navigation.mission_success_marker:main',
             'mission_success_popup = odin_navigation.mission_success_popup:main',
+            'mission_status_panel = odin_navigation.mission_status_panel:main',
+            'qwen_route_map_panel = odin_navigation.qwen_route_map_panel:main',
+            'qwen_dialog_panel = odin_navigation.qwen_dialog_panel:main',
+            'robot_scan_filter = odin_navigation.robot_scan_filter:main',
         ],
     },
 )
