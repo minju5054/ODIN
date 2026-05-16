@@ -18,6 +18,13 @@ reactive_scout_robot_1:
     explore_bias_speed: 0.12
     explore_bias_period: 12.0
     side_clearance_weight: 0.45
+    enable_center_spiral: true
+    center_x: 0.0
+    center_y: 0.0
+    center_spiral_weight: 0.25
+    center_spiral_turn_direction: -1.0
+    center_spiral_max_angle_deg: 30.0
+    center_spiral_min_radius: 1.5
     hostage_event_topic: /hostage_events
     merged_map_topic: /merged_map
     enable_outer_explore_after_event: true
@@ -66,6 +73,13 @@ reactive_scout_robot_2:
     explore_bias_speed: 0.12
     explore_bias_period: 12.0
     side_clearance_weight: 0.45
+    enable_center_spiral: true
+    center_x: 0.0
+    center_y: 0.0
+    center_spiral_weight: 0.25
+    center_spiral_turn_direction: -1.0
+    center_spiral_max_angle_deg: 30.0
+    center_spiral_min_radius: 1.5
     hostage_event_topic: /hostage_events
     merged_map_topic: /merged_map
     enable_outer_explore_after_event: true

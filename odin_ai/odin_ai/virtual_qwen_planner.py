@@ -1061,8 +1061,8 @@ class VirtualQwenPlanner(Node):
     def _mission_weights(mode: str) -> Dict[str, float]:
         weight_sets = {
             'FAST_RESCUE': {
-                'length': 4.0,
-                'unknown': 3.0,
+                'length': 7.0,
+                'unknown': 1.0,
                 'occupied': 1000.0,
                 'red': 1000.0,
                 'vision': 450.0,

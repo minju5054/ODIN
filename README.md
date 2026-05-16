@@ -78,6 +78,35 @@ robot_3 Nav2
 
 Qwen이 사용할 수 없거나 응답이 유효하지 않은 경우에도 같은 ROS topic contract를 유지해 전체 rescue pipeline이 중단되지 않도록 구성되어 있습니다.
 
+## Route Evaluation
+
+Coordinator는 후보 경로들을 생성하고, Qwen planner는 각 후보 경로의 상태 변수를 요약해 정책별 평가 함수에 넣습니다. 현재 구현은 값이 낮을수록 더 선호되는 cost 기반 평가식입니다.
+
+```text
+J(route) =
+  w_length   * path_length
++ w_unknown  * unknown_area_exposure
++ w_occupied * obstacle_intersection
++ w_red      * enemy_area_exposure
++ w_vision   * enemy_vision_exposure
++ w_turn     * turning_cost
++ w_route    * route_type_cost
+```
+
+각 항목의 의미는 다음과 같습니다.
+
+- `path_length`: rescue robot이 따라가야 하는 경로 길이
+- `unknown_area_exposure`: 아직 충분히 정찰되지 않은 영역을 지나는 정도
+- `obstacle_intersection`: 장애물 또는 점유 cell과 충돌하는 정도
+- `enemy_area_exposure`: enemy stronghold 또는 red zone과 겹치는 정도
+- `enemy_vision_exposure`: 적 시야망으로 간주되는 영역에 노출되는 정도
+- `turning_cost`: 경로의 회전량과 조향 복잡도
+- `route_type_cost`: 후보 경로가 어떤 planner/context에서 생성됐는지를 반영하는 보정항
+
+`FAST_RESCUE`, `SAFE_RESCUE`, `STEALTH_RESCUE`는 같은 평가식을 사용하지만 서로 다른 정책 가중치 집합을 적용합니다. 예를 들어 `FAST_RESCUE`는 신속한 rescue를, `SAFE_RESCUE`는 정찰된 영역을, `STEALTH_RESCUE`는 enemy area와 vision exposure 회피를 더 강하게 반영합니다.
+
+Qwen은 전체 후보를 그대로 받지 않고, coordinator와 planner가 압축한 후보 요약을 입력받습니다. Qwen이 선택한 경로는 다시 coordinator validation을 거쳐 `robot_3` dispatch에 사용됩니다.
+
 ## GUI 구성
 
 현재 데모는 다음 GUI를 사용합니다.
