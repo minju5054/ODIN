@@ -683,6 +683,102 @@ map
 - `robot_3` spawn point 다양화
 - map merge 방식 일반화
 
+## Docker 환경 실행
+
+Docker 배포 파일은 `docker/` 아래에 두 가지 실행 프로파일로 분리되어 있습니다.
+
+### 1. Qwen Jetson + Desktop 전체 실행
+
+최소 배포형 구성입니다. Qwen server는 Jetson 또는 별도 container에서 실행하고, ODIN ROS graph 전체는 laptop/desktop container에서 실행합니다.
+
+```bash
+cd /home/odin/robotics_ws/ros2_ws/src/odin_rescue/docker/qwen_plus_desktop
+cp .env.example .env
+```
+
+`.env`에서 Qwen endpoint를 맞춥니다.
+
+```text
+QWEN_API_URL=http://<QWEN_JETSON_IP>:8081/v1/chat/completions
+```
+
+Qwen server와 ODIN 전체 demo를 모두 Docker로 실행하는 경우:
+
+```bash
+xhost +local:docker
+docker compose --env-file .env build
+docker compose --env-file .env up
+```
+
+Qwen server가 이미 Jetson에서 실행 중이고, desktop에서는 ODIN만 실행하는 경우:
+
+```bash
+xhost +local:docker
+docker compose --env-file .env up --build odin
+```
+
+종료:
+
+```bash
+docker compose --env-file .env down
+```
+
+### 2. Full Distributed Jetson 실행
+
+역할별 container를 각 장비에서 실행하는 구성입니다.
+
+| 장비 | Compose file | 역할 |
+| --- | --- | --- |
+| Laptop/Desktop | `compose.desktop.yaml` | Gazebo, 중앙 기능, GUI |
+| Jetson 1 | `compose.robot_1.yaml` | `robot_1` scout stack |
+| Jetson 2 | `compose.robot_2.yaml` | `robot_2` scout stack |
+| Jetson 3 | `compose.robot_3.yaml` | `robot_3` rescue stack |
+| Jetson 4 | `compose.qwen.yaml` | Qwen server, AI planner |
+
+각 장비에서 공통으로 준비합니다.
+
+```bash
+cd /home/odin/robotics_ws/ros2_ws/src/odin_rescue/docker/full_distributed
+cp .env.example .env
+```
+
+`.env`에서 모든 장비가 같은 ROS domain과 Qwen endpoint를 사용하도록 맞춥니다.
+
+```text
+ROS_DOMAIN_ID=42
+ROS_LOCALHOST_ONLY=0
+QWEN_HOST_IP=<QWEN_JETSON_IP>
+QWEN_API_URL=http://<QWEN_JETSON_IP>:8081/v1/chat/completions
+```
+
+실행 순서 예시:
+
+```bash
+# Jetson 4
+docker compose --env-file .env -f compose.qwen.yaml up --build
+
+# Laptop/Desktop
+xhost +local:docker
+docker compose --env-file .env -f compose.desktop.yaml up --build
+
+# Jetson 1
+docker compose --env-file .env -f compose.robot_1.yaml up --build
+
+# Jetson 2
+docker compose --env-file .env -f compose.robot_2.yaml up --build
+
+# Jetson 3
+docker compose --env-file .env -f compose.robot_3.yaml up --build
+```
+
+종료:
+
+```bash
+docker compose --env-file .env -f <compose-file>.yaml down
+```
+
+분산 실행에서는 같은 역할의 node를 두 장비에서 동시에 실행하지 않아야 합니다. 모든 장비는 같은 유선망, 같은 `ROS_DOMAIN_ID`, `ROS_LOCALHOST_ONLY=0` 설정을 공유해야 하며, Qwen endpoint는 모든 ODIN container에서 접근 가능해야 합니다.
+
 ## 참고
 
 프로젝트는 다음 원칙을 유지합니다.
