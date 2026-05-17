@@ -1,0 +1,23 @@
+services:
+  desktop_central:
+    build:
+      context: ../..
+      dockerfile: docker/full_distributed/Dockerfile.odin
+    image: odin/ros-distributed:humble
+    network_mode: host
+    ipc: host
+    privileged: true
+    command: ["/opt/odin/scripts/run_desktop_central.sh"]
+    environment:
+      DISPLAY: ${DISPLAY:-:0}
+      QT_X11_NO_MITSHM: "1"
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      GAZEBO_GUI: ${GAZEBO_GUI:-true}
+      START_GUI_PANELS: ${START_GUI_PANELS:-true}
+      START_MISSION_INTENT_GUI: ${START_MISSION_INTENT_GUI:-true}
+      START_DEPLOYMENT_VIEW: ${START_DEPLOYMENT_VIEW:-true}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${XAUTHORITY:-$HOME/.Xauthority}:/root/.Xauthority:ro

@@ -1,0 +1,33 @@
+services:
+  qwen_server:
+    build:
+      context: ../..
+      dockerfile: docker/full_distributed/Dockerfile.qwen
+    image: odin/qwen-server:humble
+    network_mode: host
+    ipc: host
+    restart: unless-stopped
+    environment:
+      QWEN_MODEL: /models/Qwen3-VL-4B-Instruct-Q4_K_M.gguf
+      QWEN_MMPROJ: /models/Qwen3-VL-4B-Instruct-mmproj.gguf
+      QWEN_PORT: ${QWEN_PORT:-8081}
+      QWEN_CTX_SIZE: ${QWEN_CTX_SIZE:-1024}
+      QWEN_GPU_LAYERS: ${QWEN_GPU_LAYERS:-0}
+    volumes:
+      - ${QWEN_MODEL_DIR:-/home/odin}:/models:ro
+
+  qwen_planner:
+    build:
+      context: ../..
+      dockerfile: docker/full_distributed/Dockerfile.odin
+    image: odin/ros-distributed:humble
+    network_mode: host
+    ipc: host
+    depends_on:
+      - qwen_server
+    command: ["/opt/odin/scripts/run_ai_planner.sh"]
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      QWEN_API_URL: ${QWEN_API_URL:-http://127.0.0.1:8081/v1/chat/completions}

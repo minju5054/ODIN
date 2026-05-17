@@ -1,0 +1,14 @@
+services:
+  robot_3_stack:
+    build:
+      context: ../..
+      dockerfile: docker/full_distributed/Dockerfile.odin
+    image: odin/ros-distributed:humble
+    network_mode: host
+    ipc: host
+    privileged: true
+    command: ["/opt/odin/scripts/run_robot3_rescue.sh"]
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}

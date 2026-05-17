@@ -1,0 +1,40 @@
+services:
+  qwen:
+    build:
+      context: ../..
+      dockerfile: docker/qwen_plus_desktop/Dockerfile.qwen
+    image: odin/qwen-server:humble
+    network_mode: host
+    ipc: host
+    restart: unless-stopped
+    environment:
+      QWEN_MODEL: /models/Qwen3-VL-4B-Instruct-Q4_K_M.gguf
+      QWEN_MMPROJ: /models/Qwen3-VL-4B-Instruct-mmproj.gguf
+      QWEN_PORT: ${QWEN_PORT:-8081}
+      QWEN_CTX_SIZE: ${QWEN_CTX_SIZE:-1024}
+      QWEN_GPU_LAYERS: ${QWEN_GPU_LAYERS:-0}
+    volumes:
+      - ${QWEN_MODEL_DIR:-/home/odin}:/models:ro
+
+  odin:
+    build:
+      context: ../..
+      dockerfile: docker/qwen_plus_desktop/Dockerfile.odin
+    image: odin/ros-demo:humble
+    network_mode: host
+    ipc: host
+    privileged: true
+    depends_on:
+      - qwen
+    environment:
+      DISPLAY: ${DISPLAY:-:0}
+      QT_X11_NO_MITSHM: "1"
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      QWEN_API_URL: ${QWEN_API_URL:-http://127.0.0.1:8081/v1/chat/completions}
+      GAZEBO_GUI: ${GAZEBO_GUI:-true}
+      START_DEPLOYMENT_VIEW: ${START_DEPLOYMENT_VIEW:-true}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${XAUTHORITY:-$HOME/.Xauthority}:/root/.Xauthority:ro

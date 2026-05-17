@@ -1,0 +1,22 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    cmake \
+    git \
+    libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG LLAMA_CPP_REF=master
+RUN git clone --depth 1 --branch ${LLAMA_CPP_REF} https://github.com/ggml-org/llama.cpp.git /opt/llama.cpp && \
+    cmake -S /opt/llama.cpp -B /opt/llama.cpp/build -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build /opt/llama.cpp/build --config Release -j"$(nproc)"
+
+COPY docker/qwen_plus_desktop/scripts/run_qwen_server.sh /opt/odin/scripts/run_qwen_server.sh
+RUN chmod +x /opt/odin/scripts/run_qwen_server.sh
+
+EXPOSE 8081
+CMD ["/opt/odin/scripts/run_qwen_server.sh"]
